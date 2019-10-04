@@ -1,7 +1,16 @@
+/*
+    Required args: filename portno
+    e.g. ./server 9999
+
+    argv[0] filename
+    argv[1] portno
+    
+*/
+
 #include <stdio.h>  // Standard input output - printf, scanf, etc.
 #include <stdlib.h> // Contains var types, macros and some general functions (e.g atoi).
-#include <string.h>
-#include <unistd.h>
+#include <string.h> // Contains string functionality, specifically string comparing.
+#include <unistd.h> // Contains read, write and close functions.
 #include <sys/types.h>  // Contain datatypes to do system calls (socket.h, in.h + more).
 #include <sys/socket.h> // Definitions of structures for sockets (e.g. sockaddr struct).
 #include <netinet/in.h> // Contain consts and structs needed for internet domain addresses.
@@ -59,7 +68,8 @@ int main(int argc, char * argv[])
             n = read(newsockfd , buffer , 255); // New file discriptor on connected client, buffer and its size.
             if(n < 0)
                 error("Error on read.");
-            printf("Client : %s\n" , buffer); // Print buffer message.
+            printf("Client : %s" , buffer); // Print buffer message.
+            
             bzero(buffer, 255);
             fgets(buffer , 255, stdin); // Read buytes from stream.
 
