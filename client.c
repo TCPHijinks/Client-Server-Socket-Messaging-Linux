@@ -16,7 +16,7 @@
 #include <sys/socket.h> // Definitions of structures for sockets (e.g. sockaddr struct).
 #include <netinet/in.h> // Contain consts and structs needed for internet domain addresses.
 #include <netdb.h>      // Defines hostent struct. Contains host info, including hostname and ip version for address (e.g. ipv4).
-
+#include <signal.h>
 
 void error(const char *msg)
 {
@@ -24,8 +24,18 @@ void error(const char *msg)
     exit(0);
 }
 
+static volatile sig_atomic_t servrun = 1;
+static void sig_handler(int _)
+{
+    (void)_;
+    servrun = 0;
+}
+
+
 int main(int argc , char *argv[])
 {
+    signal(SIGINT, sig_handler);
+
     int sockfd , portno, n;
     struct sockaddr_in serv_addr; // Socket address.
     struct hostent *server;
@@ -55,8 +65,9 @@ int main(int argc , char *argv[])
     if(connect(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0)
         error("Connection Failed.");
 
-    
-    while(1)
+
+
+    while(servrun)
     {
         bzero(buffer , 255);
         fgets(buffer , 255 , stdin); // Pass buffer to server using standard input stream.
@@ -70,10 +81,11 @@ int main(int argc , char *argv[])
             error("Error on read.");
         printf("Server: %s" , buffer);
 
-        int i = strncmp("Bye" , buffer , 3); // String compare - check if exit. Check for 'bye' in buffer of length 3.
+        int i = strncmp("SERV_CLOSE" , buffer , 10); // String compare - check if exit. Check for 'bye' in buffer of length 3.
         if(i == 0)
             break;
     }
+    
     close(sockfd);
     return 0;
 
