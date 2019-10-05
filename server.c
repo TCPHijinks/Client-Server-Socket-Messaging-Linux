@@ -3,8 +3,6 @@
     > Replace read() with select (in client & serv) so loop doesn't get stuck passively waiting for client input.
     > Don't accept ctrl+c from client as will shut down serv as well (maybe do as a client-side fix?)
         * Allow client to accept ctrl+c as this should shut it down.
-    > Formatting of replace_str when invalid format e.g. "fetfaw".
-        * Allocate needed memory so replacement can be bigger.
 */
 
 /*
@@ -16,6 +14,10 @@
 
 */
 
+const int MAX_CLIENTS = 1;
+const int MAX_ID_VAL = 255;
+const int MIN_ID_VAL = 0;
+
 #include <stdio.h>  // Standard input output - printf, scanf, etc.
 #include <stdlib.h> // Contains var types, macros and some general functions (e.g atoi).
 #include <string.h> // Contains string functionality, specifically string comparing.
@@ -25,7 +27,26 @@
 #include <netinet/in.h> // Contain consts and structs needed for internet domain addresses.
 #include <signal.h>
 
+struct Message
+{
+    char* chnid;
 
+};
+
+
+struct Channel
+{
+    char* id;
+
+};
+
+
+
+struct Client
+{
+    char* id;
+    struct channel* channels;
+} client;
 
 
 void error(const char *msg)
@@ -55,6 +76,18 @@ char *replace_str(char *str, char *orig, char *rep)
 
 
 
+int id_validformat(char* id) // Return -9 if fail.
+{       
+    while(*id != '\0')
+    {        
+        if(*id < '0' || *id > '9')
+            return -1;
+        id++;    
+    }
+    return 0;
+}
+
+
 char id[4]; // Id length including end \0.
 int subscribe(char buffer[255])
 {       
@@ -64,19 +97,19 @@ int subscribe(char buffer[255])
     int i; // ID as an integer. 
     sscanf(id, "%d", &i); // Try convert id string to int.
 
-    char temp[4];
-    sprintf(temp, "%d" , i);
-    if(strcmp(temp, id) != 0) // Invalid channel id return error.
+
+    if(id_validformat(id) < 0) // Fail if id contain non-decimals.
         return -1;
-        //printf("Invalid ID of %d != %s" , i , id);
-    //else 
-      //  printf("Valid ID of %d == %s", i , id);
+
+    if(i > MAX_ID_VAL || i < MIN_ID_VAL) // Fail id val outside allowed range.
+        return -1;
+
     return 0;
 }
 
 
 
-
+// Handler for program exit via ctrl+c in terminal.
 static volatile sig_atomic_t servrun = 1;
 static void sig_handler(int _)
 {
@@ -86,7 +119,7 @@ static void sig_handler(int _)
 
 
 
-
+// Append strings and return result.
 char* strappend(char* str1, char* str2)
 {
     int n = strlen(str1) + strlen(str2);
@@ -136,14 +169,17 @@ int main(int argc, char * argv[])
     if(bind(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0) //  Returns -1 on failure.    
         error("Binding failed.");
     
-    listen(sockfd , 5); // Listen on socket using 'socket file discriptor', allow maximum of 'n' (5) connections to server at a time.
+    listen(sockfd , MAX_CLIENTS); // Listen on socket using 'socket file discriptor', allow maximum of 'n' (5) connections to server at a time.
     clilen = sizeof(cli_addr); // Set client address memory size.
 
     newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen);
-
     if(newsockfd < 0)
         error("Error on Accept,\n");
     
+    // Client Setup...
+    //struct Client client;
+    client.id = calloc(3, sizeof(char));
+    strcpy(client.id, "1") ; //////
     
 
     while(servrun)
@@ -165,6 +201,7 @@ int main(int argc, char * argv[])
             else
                 strcpy(msg , replace_str("Invalid channel: <xxx>.\n","xxx",id));
          
+         	// Example of appending to msg buffer.
             strcpy(msg, strappend(msg, "HAHAHAHAHAHA"));
             strcpy(msg, strappend(msg, "__HAHAHAHAHAHA"));
         }
