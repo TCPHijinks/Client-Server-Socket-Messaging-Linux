@@ -87,10 +87,26 @@ static void sig_handler(int _)
 
 
 
+char* strappend(char* str1, char* str2)
+{
+    int n = strlen(str1) + strlen(str2);
+
+    char* t_msg = calloc(n, sizeof(char));
+    strcat(t_msg , str1);
+    strcat(t_msg, str2);
+    
+    return t_msg;
+}
+
+
+
+
+
+
 int main(int argc, char * argv[])
 {
     signal(SIGINT, sig_handler);
-
+   
     if(argc < 2)
     {
         fprintf(stderr , "Port Num not provided. Program terminated.\n");
@@ -147,7 +163,10 @@ int main(int argc, char * argv[])
             if(subscribe(buffer) == 0) 
                 strcpy(msg , replace_str("Subscribed to channel <xxx>.\n","xxx",id));  
             else
-                strcpy(msg , replace_str("Invalid channel: <xxx>.\n","xxx",id));  
+                strcpy(msg , replace_str("Invalid channel: <xxx>.\n","xxx",id));
+         
+            strcpy(msg, strappend(msg, "HAHAHAHAHAHA"));
+            strcpy(msg, strappend(msg, "__HAHAHAHAHAHA"));
         }
         else
         {
@@ -165,3 +184,6 @@ int main(int argc, char * argv[])
     
     return 0;
 }
+
+
+
