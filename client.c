@@ -69,21 +69,21 @@ int main(int argc , char *argv[])
 
     while(servrun)
     {
-        bzero(buffer , 255);
-        fgets(buffer , 255 , stdin); // Pass buffer to server using standard input stream.
-        n = write(sockfd , buffer , strlen(buffer)); // Write to server.
-        if(n < 0)
-            error("Error on write.");
-
         bzero(buffer , 255); // Empty.
         n = read(sockfd , buffer , 255); // Read buffer from server.
         if(n < 0)
             error("Error on read.");
-        printf("Server: %s" , buffer);
+        printf("%s",buffer);
 
-        int i = strncmp("SERV_CLOSE" , buffer , 10); // String compare - check if exit. Check for 'bye' in buffer of length 3.
-        if(i == 0)
-            break;
+        bzero(buffer , 255);
+        fgets(buffer , 255 , stdin); // Pass buffer to server using standard input stream. (wait point)              
+        n = write(sockfd , buffer , strlen(buffer)); // Write to server.
+        if(n < 0)
+            error("Error on write.");
+
+       // int i = strncmp("SERV_CLOSE" , buffer , 10); // String compare - check if exit. Check for 'bye' in buffer of length 3.
+       // if(i == 0)
+       //     break;
     }
     
     close(sockfd);

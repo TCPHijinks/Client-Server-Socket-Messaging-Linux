@@ -27,33 +27,45 @@ const int MIN_ID_VAL = 0;
 #include <netinet/in.h> // Contain consts and structs needed for internet domain addresses.
 #include <signal.h>
 
-struct Message
-{
-    char* chnid;
-
-};
-
-
-struct Channel
-{
-    char* id;
-
-};
-
-
-
-struct Client
-{
-    char* id;
-    struct channel* channels;
-} client;
-
-
 void error(const char *msg)
 {
     perror(msg); // Output error number and message.
     exit(1);
 }
+
+struct Message
+{
+    char* chnid;
+    struct Message* next;
+};
+
+
+struct Channel
+{
+    char id[3];
+    int curMsgReadPos;
+    int totalMsgs;
+    struct Message msgs[100];
+};
+
+void chan_addMsg(struct Message msg)
+{
+    // Have buffer overflow in case of too many messages.
+}
+
+
+
+struct Client
+{
+    char id[3];
+    int curChanPos;
+    struct Channel channels[255];
+} client;
+
+
+
+
+
 
 
 
@@ -88,22 +100,49 @@ int id_validformat(char* id) // Return -9 if fail.
 }
 
 
+
+int cli_alreadySubbed(char* chanId) // TO DO: Optimize algorithm later.
+{    
+    for(int i = 0; i < client.curChanPos; i++)
+    {        
+        if(strcmp(chanId, client.channels[i].id) == 0) 
+        {    
+            return 0; // Already subbed to.
+        }             
+    }  
+    return -1; // No match.
+}
+
+
+
+void cli_addchan(char* idchan)
+{
+    strcpy(client.channels[client.curChanPos].id, idchan);
+    client.channels[client.curChanPos].curMsgReadPos = 0;  
+    client.channels[client.curChanPos].totalMsgs = 0;
+    client.curChanPos++;    
+    return;
+}
+
+
+
 char id[4]; // Id length including end \0.
 int subscribe(char buffer[255])
 {       
     memcpy(id , &buffer[5] , 4); // Get 3 char long id inside of <>.
     id[3] = '\0'; // Set string end.
 
-    int i; // ID as an integer. 
-    sscanf(id, "%d", &i); // Try convert id string to int.
+    int i_id; // ID as an integer. 
+    sscanf(id, "%d", &i_id); // convert id to int.
 
-
-    if(id_validformat(id) < 0) // Fail if id contain non-decimals.
+    if(id_validformat(id) < 0) 
         return -1;
-
-    if(i > MAX_ID_VAL || i < MIN_ID_VAL) // Fail id val outside allowed range.
-        return -1;
-
+    if(i_id > MAX_ID_VAL || i_id < MIN_ID_VAL) 
+        return -1;   
+    if(cli_alreadySubbed(id) == 0)
+        return 1;
+    
+    cli_addchan(id);
     return 0;
 }
 
@@ -120,10 +159,9 @@ static void sig_handler(int _)
 
 
 // Append strings and return result.
-char* strappend(char* str1, char* str2)
+char* str_append(char* str1, char* str2)
 {
     int n = strlen(str1) + strlen(str2);
-
     char* t_msg = calloc(n, sizeof(char));
     strcat(t_msg , str1);
     strcat(t_msg, str2);
@@ -133,6 +171,13 @@ char* strappend(char* str1, char* str2)
 
 
 
+// Write to client.
+void writecli(int newsockfd, char* buffer)
+{    
+    int n = write(newsockfd , buffer, strlen(buffer));
+    if(n < 0)
+        error("Error on write."); 
+}
 
 
 
@@ -151,7 +196,7 @@ int main(int argc, char * argv[])
 
     struct sockaddr_in serv_addr, cli_addr;// Socket address.
     socklen_t clilen; // Size of socket address in bytes.
-
+    
     sockfd = socket(AF_INET, SOCK_STREAM, 0); // IPv4, TCP, default to TCP.
     if(sockfd < 0) // Failure.
     {
@@ -160,10 +205,10 @@ int main(int argc, char * argv[])
 
     bzero((char *) &serv_addr , sizeof(serv_addr)); // Clear any data in reference (make sure serv_addr empty).
     portno = atoi(argv[1]); // Convert string to integar.
-
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     serv_addr.sin_port = htons(portno); // Host to newtowrk shot.
+
 
     // Assign socket address to memory.
     if(bind(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0) //  Returns -1 on failure.    
@@ -175,35 +220,41 @@ int main(int argc, char * argv[])
     newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen);
     if(newsockfd < 0)
         error("Error on Accept,\n");
+  
+
+    // Client setup.
+    //client.id = calloc(3, sizeof(char));
+    client.curChanPos = 0;
+    strcpy(client.id, "001") ; //////
     
-    // Client Setup...
-    //struct Client client;
-    client.id = calloc(3, sizeof(char));
-    strcpy(client.id, "1") ; //////
-    
+    // Starting welcome message.
+    writecli(newsockfd, replace_str("Welcome! Your client ID is <xxx>.\n","xxx",client.id));
+
 
     while(servrun)
     {
         bzero(buffer , 255); // Clear buffer.
-
-        // Waits here until response from client.
-        n = read(newsockfd , buffer , 255); // New file discriptor on connected client, buffer and its size.
+        n = read(newsockfd , buffer , 255); // Wait point, wait for client to write.
         if(n < 0)
-            error("Error on read.");
+            error("Error on read.");            
         printf("Client : %s" , buffer); // Print buffer message.
         
+
         char* msg;
         if(strstr(buffer , "SUB") != NULL)
         {          
+            int status = subscribe(buffer);
             // Set relevant msg with channel id.      
-            if(subscribe(buffer) == 0) 
+            if(status == 0)
                 strcpy(msg , replace_str("Subscribed to channel <xxx>.\n","xxx",id));  
+            else if(status == 1)
+                strcpy(msg , replace_str("Already subscribed to channel <xxx>.\n","xxx",id));
             else
                 strcpy(msg , replace_str("Invalid channel: <xxx>.\n","xxx",id));
          
-         	// Example of appending to msg buffer.
-            strcpy(msg, strappend(msg, "HAHAHAHAHAHA"));
-            strcpy(msg, strappend(msg, "__HAHAHAHAHAHA"));
+            // aPPEND TO MSG BUFFER.
+            //strcpy(msg, str_append(msg, "HAHAHAHAHAHA"));//////////////////////
+            //strcpy(msg, str_append(msg, "__HAHAHAHAHAHA"));///////////////////
         }
         else
         {
@@ -211,9 +262,7 @@ int main(int argc, char * argv[])
         }
         
         // Write to client.
-        n = write(newsockfd , msg, strlen(msg));
-        if(n < 0)
-            error("Error on write.");       
+        writecli(newsockfd, msg);   
     }
         
     close(newsockfd);
