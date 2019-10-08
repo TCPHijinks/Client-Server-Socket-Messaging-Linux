@@ -8,6 +8,8 @@
 
  */
 
+#define BUFFER_SIZE 2040
+
 #include <stdio.h>  // Standard input output - printf, scanf, etc.
 #include <stdlib.h> // Contains var types, macros and some general functions (e.g atoi).
 #include <string.h> // Contains string functionality (e.g string compare).
@@ -40,7 +42,7 @@ int main(int argc , char *argv[])
     struct sockaddr_in serv_addr; // Socket address.
     struct hostent *server;
     
-    char buffer[255]; // Store messages in heref ro data stream.
+    char buffer[BUFFER_SIZE]; // Store messages in heref ro data stream.
     if(argc < 3){ // Error if not given all args (hostname and port no).
         fprintf(stderr, "usage %s hostname port.\n", argv[0]); // Print to 'Standard Error' Stream output.
         exit(1);
@@ -69,14 +71,15 @@ int main(int argc , char *argv[])
 
     while(servrun)
     {
-        bzero(buffer , 255); // Empty.
-        n = read(sockfd , buffer , 255); // Read buffer from server.
+        bzero(buffer , BUFFER_SIZE); // Empty.
+        n = read(sockfd , buffer , BUFFER_SIZE); // Read buffer from server.
         if(n < 0)
             error("Error on read.");
         printf("%s",buffer);
 
-        bzero(buffer , 255);
-        fgets(buffer , 255 , stdin); // Pass buffer to server using standard input stream. (wait point)              
+        bzero(buffer , BUFFER_SIZE);
+        fgets(buffer , BUFFER_SIZE , stdin); // Pass buffer to server using standard input stream. (wait point)
+              
         n = write(sockfd , buffer , strlen(buffer)); // Write to server.
         if(n < 0)
             error("Error on write.");

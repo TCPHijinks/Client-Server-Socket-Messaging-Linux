@@ -1,5 +1,6 @@
 /* 
     TO DO:
+    > Setup replacement for CHANNELS command.
     > Replace read() with select (in client & serv) so loop doesn't get stuck passively waiting for client input.
     > Don't accept ctrl+c from client as will shut down serv as well (maybe do as a client-side fix?)
         * Allow client to accept ctrl+c as this should shut it down.
@@ -14,6 +15,7 @@
 
 */
 
+#define BUFFER_SIZE 2040
 const int MAX_CLIENTS = 1;
 const int MAX_ID_VAL = 255;
 const int MIN_ID_VAL = 0;
@@ -64,32 +66,43 @@ struct Client
 
 
 
-
-
-
-
-
-
-char *replace_str(char *str, char *orig, char *rep)
+char * toCharArray(int number)
 {
-  static char buffer[4096];
+    int n = 1; // Num of digits in integer.
+    if(number > 9) { n = 2; }
+    if(number > 99) { n = 3; }
+    
+    char *cArray = calloc(n, sizeof(char));
+    sprintf(cArray, "%d" , number);
+    return cArray;
+}
+
+
+
+
+
+char *replace_str(char *str, char *old, char *new)
+{
+  static char buff[4096];
   char *p;
 
-  if(!(p = strstr(str, orig)))  // Is 'orig' even in 'str'?
+  if(!(p = strstr(str, old)))  // Is 'orig' even in 'str'?
     return str;
+   
+  strncpy(buff, str, p-str); // Copy characters from 'str' start to 'orig' st$
+  buff[p-str] = '\0';
 
-  strncpy(buffer, str, p-str); // Copy characters from 'str' start to 'orig' st$
-  buffer[p-str] = '\0';
+  sprintf(buff+(p-str), "%s%s", new, p+strlen(old));
 
-  sprintf(buffer+(p-str), "%s%s", rep, p+strlen(orig));
-
-  return buffer;
+  return buff;
 }
 
 
 
 int id_validformat(char* id) // Return -9 if fail.
-{       
+{     
+    if(strlen(id) < 3)
+        return -1;  
     while(*id != '\0')
     {        
         if(*id < '0' || *id > '9')
@@ -127,7 +140,7 @@ void cli_addchan(char* idchan)
 
 
 char id[4]; // Id length including end \0.
-int subscribe(char buffer[255])
+int subscribe(char buffer[BUFFER_SIZE])
 {       
     memcpy(id , &buffer[5] , 4); // Get 3 char long id inside of <>.
     id[3] = '\0'; // Set string end.
@@ -181,6 +194,30 @@ void writecli(int newsockfd, char* buffer)
 
 
 
+
+// Return list of subscribed channels.
+char* get_cli_channels_msg()
+{
+    if(client.curChanPos == 0)
+        return "";
+
+    char *msg = calloc(BUFFER_SIZE , sizeof(char)); 
+    strcpy(msg, "Channel Subscriptions\n"); 
+    for(int i = 0; i < client.curChanPos; i++)
+    {
+        char* t_msg = "Channel: <111>\tTotal Messages: 222\tRead: 333\tUnread 444\n";        
+        t_msg = replace_str(t_msg, "111", client.channels[i].id);
+        t_msg = replace_str(t_msg, "222", toCharArray(client.channels[i].totalMsgs));
+        t_msg = replace_str(t_msg, "333", toCharArray(client.channels[i].curMsgReadPos));
+        t_msg = replace_str(t_msg, "444", toCharArray(client.channels[i].totalMsgs - client.channels[i].curMsgReadPos));
+        strcpy(msg, str_append(msg, t_msg));
+     
+    }
+    return msg;
+}
+
+
+
 int main(int argc, char * argv[])
 {
     signal(SIGINT, sig_handler);
@@ -192,7 +229,7 @@ int main(int argc, char * argv[])
     }
 
     int sockfd , newsockfd, portno, n;
-    char buffer[255]; // Store messages in heref ro data stream.
+    char buffer[BUFFER_SIZE]; // Store messages in heref ro data stream.
 
     struct sockaddr_in serv_addr, cli_addr;// Socket address.
     socklen_t clilen; // Size of socket address in bytes.
@@ -233,8 +270,8 @@ int main(int argc, char * argv[])
 
     while(servrun)
     {
-        bzero(buffer , 255); // Clear buffer.
-        n = read(newsockfd , buffer , 255); // Wait point, wait for client to write.
+        bzero(buffer , BUFFER_SIZE); // Clear buffer.
+        n = read(newsockfd , buffer , BUFFER_SIZE); // Wait point, wait for client to write.
         if(n < 0)
             error("Error on read.");            
         printf("Client : %s" , buffer); // Print buffer message.
@@ -256,6 +293,8 @@ int main(int argc, char * argv[])
             //strcpy(msg, str_append(msg, "HAHAHAHAHAHA"));//////////////////////
             //strcpy(msg, str_append(msg, "__HAHAHAHAHAHA"));///////////////////
         }
+        else if(strstr(buffer , "CHANNELS") != NULL)
+            strcpy(msg, get_cli_channels_msg());
         else
         {
             strcpy(msg , "INVALID INPUT.\n");
