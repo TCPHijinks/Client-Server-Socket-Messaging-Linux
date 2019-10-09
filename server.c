@@ -1,3 +1,9 @@
+ // aPPEND TO MSG BUFFER.
+            //strcpy(msg, str_append(msg, "HAHAHAHAHAHA"));//////////////////////
+            //strcpy(msg, str_append(msg, "__HAHAHAHAHAHA"));///////////////////
+
+
+
 /* 
     TO DO:
     > Setup replacement for CHANNELS command.
@@ -19,6 +25,7 @@
 const int MAX_CLIENTS = 1;
 const int MAX_ID_VAL = 255;
 const int MIN_ID_VAL = 0;
+
 
 #include <stdio.h>  // Standard input output - printf, scanf, etc.
 #include <stdlib.h> // Contains var types, macros and some general functions (e.g atoi).
@@ -91,24 +98,32 @@ char *replace_str(char *str, char *old, char *new)
    
   strncpy(buff, str, p-str); // Copy characters from 'str' start to 'orig' st$
   buff[p-str] = '\0';
-
   sprintf(buff+(p-str), "%s%s", new, p+strlen(old));
-
   return buff;
 }
 
 
 
-int id_validformat(char* id) // Return -9 if fail.
+int ValidID(char* id) 
 {     
-    if(strlen(id) < 3)
+    char *t_id = id;
+    if(strlen(t_id) < 3)
         return -1;  
-    while(*id != '\0')
+    while(*t_id != '\0')
     {        
-        if(*id < '0' || *id > '9')
+        if(*t_id < '0' || *t_id> '9')
             return -1;
-        id++;    
+        t_id++;    
     }
+
+    // Convert id to integer.
+    int i_id = 0; 
+    sscanf(id, "%d", &i_id); 
+
+    printf("ID VAL is:%d",i_id);
+    if(i_id > MAX_ID_VAL || i_id < MIN_ID_VAL) // Fail if id outside allowed range.
+        return -1;   
+    
     return 0;
 }
 
@@ -128,7 +143,7 @@ int cli_alreadySubbed(char* chanId) // TO DO: Optimize algorithm later.
 
 
 
-void cli_addchan(char* idchan)
+void AddNewChan(char* idchan)
 {
     strcpy(client.channels[client.curChanPos].id, idchan);
     client.channels[client.curChanPos].curMsgReadPos = 0;  
@@ -138,25 +153,63 @@ void cli_addchan(char* idchan)
 }
 
 
+int GetChanIndex(char* id)
+{
+    int n = client.curChanPos;
+    for(int i = 0; i < n; i++)
+    {
+        if(strcmp(client.channels[i].id, id) == 0)
+            return i;
+    }
+    return -1; // Failed to find.
+}
 
-char id[4]; // Id length including end \0.
-int subscribe(char buffer[BUFFER_SIZE])
+
+char* Unsub(char buffer[BUFFER_SIZE])
+{
+    char id[4];
+    memcpy(id , &buffer[7] , 4); // Get 3 char long id inside of <> + /0 end.
+    id[3] = '\0'; 
+   
+    if(ValidID(id) < 0) // Invalid id.
+        return replace_str("Invalid channel: <xxx>.\n","xxx",id);
+    
+    int i = GetChanIndex(id);
+    if(i < 0) // Not subscribed to this chan id.
+        return replace_str("Not subscribed to channel: <xxx>.\n","xxx",id);
+    
+    
+   
+    for(;i < client.curChanPos; i++)
+    {
+        strcpy(client.channels[i].id , client.channels[i+1].id);
+        client.channels[i].curMsgReadPos = client.channels[i+1].curMsgReadPos;
+        client.channels[i].totalMsgs = client.channels[i+1].totalMsgs;         
+        memcpy(client.channels[i].msgs, client.channels[i+1].msgs, sizeof(client.channels[i].msgs));   
+        printf("\nwork\n");     
+    }
+    if(client.curChanPos > 0)
+        client.curChanPos -= 1;
+    
+    return replace_str("Usubscribed from channel: <xxx>.\n","xxx",id);
+}
+
+
+
+char* Sub(char buffer[BUFFER_SIZE])
 {       
+    char id[4];
     memcpy(id , &buffer[5] , 4); // Get 3 char long id inside of <>.
     id[3] = '\0'; // Set string end.
 
-    int i_id; // ID as an integer. 
-    sscanf(id, "%d", &i_id); // convert id to int.
+    if(ValidID(id) < 0) // Return if invalid id.
+        return replace_str("Invalid channel: <xxx>.\n","xxx",id);
 
-    if(id_validformat(id) < 0) 
-        return -1;
-    if(i_id > MAX_ID_VAL || i_id < MIN_ID_VAL) 
-        return -1;   
     if(cli_alreadySubbed(id) == 0)
-        return 1;
+        return replace_str("Already subscribed to channel <xxx>.\n","xxx",id);
     
-    cli_addchan(id);
-    return 0;
+    AddNewChan(id);
+    return replace_str("Subscribed to channel <xxx>.\n","xxx",id);
 }
 
 
@@ -195,11 +248,15 @@ void writecli(int newsockfd, char* buffer)
 
 
 
+
+
+
 // Return list of subscribed channels.
 char* get_cli_channels_msg()
 {
-    if(client.curChanPos == 0)
-        return "";
+    printf("CUR POS is %d",client.curChanPos);
+    if(client.curChanPos <= 0)
+        return " ";
 
     char *msg = calloc(BUFFER_SIZE , sizeof(char)); 
     strcpy(msg, "Channel Subscriptions\n"); 
@@ -278,21 +335,10 @@ int main(int argc, char * argv[])
         
 
         char* msg;
-        if(strstr(buffer , "SUB") != NULL)
-        {          
-            int status = subscribe(buffer);
-            // Set relevant msg with channel id.      
-            if(status == 0)
-                strcpy(msg , replace_str("Subscribed to channel <xxx>.\n","xxx",id));  
-            else if(status == 1)
-                strcpy(msg , replace_str("Already subscribed to channel <xxx>.\n","xxx",id));
-            else
-                strcpy(msg , replace_str("Invalid channel: <xxx>.\n","xxx",id));
-         
-            // aPPEND TO MSG BUFFER.
-            //strcpy(msg, str_append(msg, "HAHAHAHAHAHA"));//////////////////////
-            //strcpy(msg, str_append(msg, "__HAHAHAHAHAHA"));///////////////////
-        }
+        if(strstr(buffer , "UNSUB") != NULL)
+            strcpy(msg , Unsub(buffer));          
+        else if(strstr(buffer , "SUB") != NULL)                
+            strcpy(msg , Sub(buffer)); 
         else if(strstr(buffer , "CHANNELS") != NULL)
             strcpy(msg, get_cli_channels_msg());
         else
