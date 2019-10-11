@@ -34,6 +34,8 @@ static void sig_handler(int _)
 }
 
 
+
+
 int main(int argc , char *argv[])
 {
     signal(SIGINT, sig_handler);
@@ -69,7 +71,7 @@ int main(int argc , char *argv[])
 
 
 
-    while(servrun)
+    while(servrun == 1)
     {
         bzero(buffer , BUFFER_SIZE); // Empty.
         n = read(sockfd , buffer , BUFFER_SIZE); // Read buffer from server.
@@ -83,6 +85,9 @@ int main(int argc , char *argv[])
         n = write(sockfd , buffer , strlen(buffer)); // Write to server.
         if(n < 0)
             error("Error on write.");
+        
+        if(strstr(buffer , "BYE") != NULL)
+            servrun = 0;
 
        // int i = strncmp("SERV_CLOSE" , buffer , 10); // String compare - check if exit. Check for 'bye' in buffer of length 3.
        // if(i == 0)

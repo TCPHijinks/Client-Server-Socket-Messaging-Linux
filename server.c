@@ -304,6 +304,18 @@ char* Channels()
 }
 
 
+// TO DO: FIX & handle disconnect from server side to client.
+void Bye()
+{
+    for(int i = client.curChanPos; i > 0 ; i--){
+        char* b = calloc(BUFFER_SIZE, sizeof(char));
+        strcpy(b, replace_str("UNSUB XXX", "XXX", client.channels[i].id));
+        Unsub(b);
+    }
+}
+
+
+
 
 int main(int argc, char * argv[])
 {
@@ -382,6 +394,8 @@ int main(int argc, char * argv[])
             strcpy(msg, Channels());
         else if(strstr(buffer , "SEND") != NULL)
             strcpy(msg, Send(buffer));
+        else if(strstr(buffer , "BYE") != NULL)
+            Bye();
         else
         {
             strcpy(msg , "INVALID INPUT.\n");
