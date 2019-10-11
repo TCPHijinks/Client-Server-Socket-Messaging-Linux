@@ -303,14 +303,18 @@ char* Channels()
 }
 
 
-// TO DO: FIX & handle disconnect from server side to client.
-void Bye()
+
+
+void Bye(int newsockfd)
 {
-    for(int i = client.curChanPos; i >= 0 ; i--){
+    for(int i = client.curChanPos; i >= 0 ; i--) // Unsub from all cur channels.
+    {
         char* b = calloc(BUFFER_SIZE, sizeof(char));
-        strcpy(b, replace_str("UNSUB XXX", "XXX", client.channels[i].id));
+        strcpy(b, replace_str("UNSUB XXX", "XXX", client.channels[i].id));       
         Unsub(b);
     }
+    strcpy(client.id, ToCharArray(atoi(client.id) + 1)); // Increment client id.
+    close(newsockfd);
 }
 
 
@@ -318,45 +322,39 @@ void Bye()
 
 int main(int argc, char * argv[])
 {
-  //  signal(SIGINT, sig_handler);
-   
-    if(argc < 2)
-    {
-        fprintf(stderr , "\nPort Num not provided. Program terminated.");
-        exit(1);
-    }
-
+    //  signal(SIGINT, sig_handler);
     int sockfd , newsockfd, portno, n;
-    char buffer[BUFFER_SIZE]; // Store messages in heref ro data stream.
+    char buffer[BUFFER_SIZE]; 
 
-    struct sockaddr_in serv_addr, cli_addr;// Socket address.
-    socklen_t clilen; // Size of socket address in bytes.
+    struct sockaddr_in serv_addr, cli_addr;
+    socklen_t clilen; // Sock addr size.
     
-    sockfd = socket(AF_INET, SOCK_STREAM, 0); // IPv4, TCP, default to TCP.
-    if(sockfd < 0) // Failure.
-    {
-        error("Error opening socket.");
-    }
-
     bzero((char *) &serv_addr , sizeof(serv_addr)); // Clear any data in reference (make sure serv_addr empty).
-    portno = atoi(argv[1]); // Convert string to integar.
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);       // IPv4, TCP, default to TCP.
+    if(sockfd < 0) error("Error opening socket.");  // Failed.
+    
+   
+    if(argc < 2) // Default to port 12345 if no port arg given.
+        portno = 12345;
+    else
+        portno = atoi(argv[1]); 
+
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(portno); // Host to newtowrk shot.
+    serv_addr.sin_port = htons(portno); 
 
 
-    // Assign socket address to memory.
-    if(bind(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0) //  Returns -1 on failure.    
+    
+    if(bind(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0) // Assign socket address to memory.   
         error("\nBinding failed.");
     
-    listen(sockfd , MAX_CLIENTS); // Listen on socket using 'socket file discriptor', allow maximum of 'n' (5) connections to server at a time.
-    clilen = sizeof(cli_addr); // Set client address memory size.
+    listen(sockfd , MAX_CLIENTS); // Start passively listening using given socket.
+    clilen = sizeof(cli_addr);    // Set client address memory size.
 
-    newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen);
-    if(newsockfd < 0)
-        error("\nError on Accept,");
+    newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); // Wait until accept client connection.
+    if(newsockfd < 0) error("\nError on Accept.\n"); // Failed.
   
-     // Channel server setup.
+    // Channel server setup.
     allChans = calloc(255, sizeof(struct Channel));    
     for(int i = 0; i < 255; i++)
     {
@@ -367,11 +365,9 @@ int main(int argc, char * argv[])
     }
    
 
-    // Client setup.    
+    // Setup.    
     client.curChanPos = 0;
-    strcpy(client.id, "1") ; //////
-    
-    
+    strcpy(client.id, "1") ; 
     WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
     
     while(servrun)
@@ -397,15 +393,11 @@ int main(int argc, char * argv[])
             strcpy(msg, Channels());
         else if(strstr(buffer , "SEND") != NULL)
             strcpy(msg, Send(buffer));
-        else if(strstr(buffer , "BYE") != NULL)
-        {
-            close(newsockfd);
-            Bye();
-        }           
+        else if(strstr(buffer , "BYE") != NULL)            
+            Bye(newsockfd);
         else
-        {
             strcpy(msg , "\nINVALID INPUT.");
-        }
+        
                   
         int n = WriteClient(newsockfd, msg);   
         if(n < 0) // On write fail, wait to reconnect.
@@ -413,14 +405,8 @@ int main(int argc, char * argv[])
             newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); 
             WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
         }
-       
-        
     }
     close(newsockfd);
-    close(sockfd);
-    
+    close(sockfd);    
     return 0;
 }
-
-
-
