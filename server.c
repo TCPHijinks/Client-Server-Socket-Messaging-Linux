@@ -89,9 +89,6 @@ char * ToCharArray(int number)
     return cArray;
 }
 
-
-
-
 void WriteClient(int newsockfd, char* buffer) // Write to client.
 {    
     int n = write(newsockfd , buffer, strlen(buffer));
@@ -99,11 +96,12 @@ void WriteClient(int newsockfd, char* buffer) // Write to client.
         error("Error on write."); 
 }
 
+
+
 struct Message
 {
     char msg[1024];
 };
-
 
 struct Channel
 {
@@ -141,8 +139,7 @@ int ValidID(char* id)  // Verifies that id is completely decimal and inside allo
 
     printf("ID VAL is:%d",i_id);
     if(i_id > MAX_ID_VAL || i_id < MIN_ID_VAL) // Fail if id outside allowed range.
-        return -1;   
-
+        return -1; 
     return 0;
 }
 
@@ -151,28 +148,30 @@ int ValidID(char* id)  // Verifies that id is completely decimal and inside allo
 
 char* GetBufferString(char buffer[BUFFER_SIZE], int cmdLen, int targetLen) // Gets ID from stdin buffer.
 {    
-    int len = cmdLen + 1; // Command + space.
-    
+    int len = cmdLen + 1; // CMD + space.    
     char* id = calloc(4, sizeof(char));
     memcpy(id , &buffer[len] , targetLen); // Get id from terminal entry.
 
+    // Ignore spacing and anything after it if in captured ID.
+    char* t_id = calloc(4, sizeof(char));
+    for(int i = 0; i < 3; i++)
+    {
+        if(id[i] != '\0' && id[i] != ' ')
+            t_id[i] = id[i];
+        else
+            break;
+    }
+    id = calloc(4, sizeof(char));
+    strcpy(id, t_id);
+    free(t_id);
+
     if(ValidID(id) == -1)
         return id;
-    
-
-    int n = 0;
-    n = strlen(id) - 1;
-
-    int i_id = 0; // ID as converted integer.
-    sscanf(id, "%d", &i_id); 
+  
+    int i_id = atoi(id); // ID as converted integer.
     free(id);
     return ToCharArray(i_id);
 }
-
-
-
-
-
 
 
 
@@ -193,19 +192,14 @@ int GetChanIndex(char* id) // Return index of given channel.
 
 char* Unsub(char buffer[BUFFER_SIZE])
 {
-    char* id = GetBufferString(buffer, 5, 4);
-   
-   
+    char* id = GetBufferString(buffer, 5, 4);   
     if(ValidID(id) < 0) // Invalid id.
         return replace_str("Invalid channel: <xxx>\n","xxx",id);
-    
 
     int i = GetChanIndex(id);
     if(i < 0) // Not subscribed to this chan id.
         return replace_str("Not subscribed to channel: xxx.\n","xxx",id);
-    
-    
-   
+
     for(;i < client.curChanPos; i++)
     {
         strcpy(client.channels[i].id , client.channels[i+1].id);
@@ -214,10 +208,10 @@ char* Unsub(char buffer[BUFFER_SIZE])
         memcpy(client.channels[i].msgs, client.channels[i+1].msgs, sizeof(client.channels[i].msgs));  
     }
     if(client.curChanPos > 0)
-        client.curChanPos -= 1;
-    
+        client.curChanPos -= 1;    
     return replace_str("Usubscribed from channel: <xxx>.\n","xxx",id);
 }
+
 
 
 
@@ -257,18 +251,18 @@ char* Send(char buffer[BUFFER_SIZE])
 {
     char* id = GetBufferString(buffer, 4, 4);
     int len = strlen(buffer) - 9;
-    if(len > 1024)
+
+    if(len > 1024) // limit msg length.
         len = 1024;
     if (len < 0)
         len = 0;
-    
-    char* msg = GetBufferString(buffer, 8, len);// Get 1024 chars after "SEND XXX " cmd as a msg.
-
-    if(ValidID(id) < 0) // Return if invalid id.
-        return replace_str("Invalid channel: xxx\n","xxx",id);
 
     int i_id = atoi(id); // ID as integer.
     struct Message m; // Message to send.
+    char* msg = GetBufferString(buffer, NumOfIntegerDigits(i_id), len);// Get 1024 chars after "SEND XXX " cmd as a msg.
+
+    if(ValidID(id) < 0) // Return if invalid id.
+        return replace_str("Invalid channel: xxx\n","xxx",id);
 
     strcpy(m.msg, msg);
     strcpy(allChans[i_id].msgs[allChans[i_id].totalMsgs].msg, m.msg);
