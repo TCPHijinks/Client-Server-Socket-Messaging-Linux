@@ -89,11 +89,10 @@ char * ToCharArray(int number)
     return cArray;
 }
 
-void WriteClient(int newsockfd, char* buffer) // Write to client.
+int WriteClient(int newsockfd, char* buffer) // Write to client.
 {    
     int n = write(newsockfd , buffer, strlen(buffer));
-    if(n < 0)
-        error("Error on write."); 
+    return n;
 }
 
 
@@ -137,7 +136,6 @@ int ValidID(char* id)  // Verifies that id is completely decimal and inside allo
     if((strlen(id) - 1) > NumOfIntegerDigits(i_id)) // Integer shorter than string if have invalid char and convert. 
         return -1;
 
-    printf("ID VAL is:%d",i_id);
     if(i_id > MAX_ID_VAL || i_id < MIN_ID_VAL) // Fail if id outside allowed range.
         return -1; 
     return 0;
@@ -307,7 +305,7 @@ char* Channels()
 // TO DO: FIX & handle disconnect from server side to client.
 void Bye()
 {
-    for(int i = client.curChanPos; i > 0 ; i--){
+    for(int i = client.curChanPos; i >= 0 ; i--){
         char* b = calloc(BUFFER_SIZE, sizeof(char));
         strcpy(b, replace_str("UNSUB XXX", "XXX", client.channels[i].id));
         Unsub(b);
@@ -319,7 +317,7 @@ void Bye()
 
 int main(int argc, char * argv[])
 {
-    signal(SIGINT, sig_handler);
+  //  signal(SIGINT, sig_handler);
    
     if(argc < 2)
     {
@@ -372,16 +370,20 @@ int main(int argc, char * argv[])
     client.curChanPos = 0;
     strcpy(client.id, "1") ; //////
     
-    // Starting welcome message.
+    
     WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
-
 
     while(servrun)
     {
         bzero(buffer , BUFFER_SIZE); // Clear buffer.
         n = read(newsockfd , buffer , BUFFER_SIZE); // Wait point, wait for client to write.
-        if(n < 0)
-            error("Error on read.");            
+        if(n < 0) // On read fail, wait to reconnect.
+        {
+            newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen);
+            WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
+        }
+          
+          
         printf("Client : %s" , buffer); // Print buffer message.
         
 
@@ -395,16 +397,22 @@ int main(int argc, char * argv[])
         else if(strstr(buffer , "SEND") != NULL)
             strcpy(msg, Send(buffer));
         else if(strstr(buffer , "BYE") != NULL)
+        {
+            close(newsockfd);
             Bye();
+        }           
         else
         {
             strcpy(msg , "INVALID INPUT.\n");
         }
-        
-        // Write to client.
-        WriteClient(newsockfd, msg);   
+          
+        int n = WriteClient(newsockfd, msg);   
+        if(n < 0) // On write fail, wait to reconnect.
+        { 
+            newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); 
+            WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
+        }
     }
-        
     close(newsockfd);
     close(sockfd);
     

@@ -38,7 +38,7 @@ static void sig_handler(int _)
 
 int main(int argc , char *argv[])
 {
-    signal(SIGINT, sig_handler);
+ //   signal(SIGINT, sig_handler);
 
     int sockfd , portno, n;
     struct sockaddr_in serv_addr; // Socket address.
