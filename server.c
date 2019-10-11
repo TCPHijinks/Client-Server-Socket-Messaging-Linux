@@ -6,8 +6,6 @@
 
 /* 
     TO DO:
-    > Setup replacement for CHANNELS command.
-    > Replace read() with select (in client & serv) so loop doesn't get stuck passively waiting for client input.
     > Don't accept ctrl+c from client as will shut down serv as well (maybe do as a client-side fix?)
         * Allow client to accept ctrl+c as this should shut it down.
 */
@@ -26,7 +24,6 @@
 const int MAX_CLIENTS = 1;
 const int MAX_ID_VAL = 255;
 const int MIN_ID_VAL = 0;
-
 
 #include <stdio.h>  // Standard input output - printf, scanf, etc.
 #include <stdlib.h> // Contains var types, macros and some general functions (e.g atoi).
@@ -192,11 +189,11 @@ char* Unsub(char buffer[BUFFER_SIZE])
 {
     char* id = GetBufferString(buffer, 5, 4);   
     if(ValidID(id) < 0) // Invalid id.
-        return replace_str("Invalid channel: <xxx>\n","xxx",id);
+        return replace_str("\nInvalid channel: xxx.\n","xxx",id);
 
     int i = GetChanIndex(id);
     if(i < 0) // Not subscribed to this chan id.
-        return replace_str("Not subscribed to channel: xxx.\n","xxx",id);
+        return replace_str("\nNot subscribed to channel: xxx.\n","xxx",id);
 
     for(;i < client.curChanPos; i++)
     {
@@ -207,7 +204,7 @@ char* Unsub(char buffer[BUFFER_SIZE])
     }
     if(client.curChanPos > 0)
         client.curChanPos -= 1;    
-    return replace_str("Usubscribed from channel: <xxx>.\n","xxx",id);
+    return replace_str("\nUsubscribed from channel: xxx.\n","xxx",id);
 }
 
 
@@ -219,10 +216,10 @@ char* Sub(char buffer[BUFFER_SIZE])
     char* id = GetBufferString(buffer, 3, 4);
 
     if(ValidID(id) < 0) // Return if invalid id.
-        return replace_str("Invalid channel: xxx\n","xxx",id);
+        return replace_str("\nInvalid channel: xxx\n","xxx",id);
 
     if(GetChanIndex(id) >= 0)
-        return replace_str("Already subscribed to channel xxx.\n","xxx",id);
+        return replace_str("\nAlready subscribed to channel xxx\n.","xxx",id);
     
     
     int i_id = atoi(id);
@@ -238,7 +235,7 @@ char* Sub(char buffer[BUFFER_SIZE])
     client.channels[client.curChanPos].totalMsgs = allChans[i_id].totalMsgs;
     client.curChanPos++;    
 
-    return replace_str("Subscribed to channel xxx.\n","xxx",id);
+    return replace_str("\nSubscribed to channel xxx.\n","xxx",id);
 }
 
 
@@ -255,16 +252,18 @@ char* Send(char buffer[BUFFER_SIZE])
     if (len < 0)
         len = 0;
 
-    int i_id = atoi(id); // ID as integer.
-    struct Message m; // Message to send.
-    char* msg = GetBufferString(buffer, NumOfIntegerDigits(i_id), len);// Get 1024 chars after "SEND XXX " cmd as a msg.
+     // ID as integer.
+    //struct Message m; // Message to send.
+    
 
     if(ValidID(id) < 0) // Return if invalid id.
-        return replace_str("Invalid channel: xxx\n","xxx",id);
+        return replace_str("\nInvalid channel: xxx.\n","xxx",id);
 
-    strcpy(m.msg, msg);
-    strcpy(allChans[i_id].msgs[allChans[i_id].totalMsgs].msg, m.msg);
+    int i_id = atoi(id);
+    char* msg = GetBufferString(buffer, NumOfIntegerDigits(i_id), len);// Get 1024 chars after "SEND XXX " cmd as a msg.
+    strcpy(allChans[i_id].msgs[allChans[i_id].totalMsgs].msg, msg); // Add message to chan.
     allChans[i_id].totalMsgs++;
+    return "\n";  // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.
 }
 
 
@@ -280,25 +279,27 @@ char* Send(char buffer[BUFFER_SIZE])
 // Return list of subscribed channels.
 char* Channels()
 {
-    printf("CUR POS is %d",client.curChanPos);
     if(client.curChanPos <= 0)
-        return " ";
+    {
+        return "\n"; // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.
+    }
+        
 
     char *msg = calloc(BUFFER_SIZE , sizeof(char)); 
-    strcpy(msg, "Channel Subscriptions\n"); 
+    strcpy(msg, "\nChannel Subscriptions"); 
     for(int i = 0; i < client.curChanPos; i++)
     {
         int i_id = atoi(client.channels[i].id); // Convert id of sub channels to int.
 
-        char* t_msg = "Channel: 111\tTotal Messages: 222\tRead: 333\tUnread 444\n";        
+        char* t_msg = "\nChannel: 111\tTotal Messages: 222\tRead: 333\tUnread 444";        
         t_msg = replace_str(t_msg, "111", allChans[i_id].id); // Use converted id to get live channel info (e.g. id of 5 is used as index 5 to get info)
         t_msg = replace_str(t_msg, "222", ToCharArray(allChans[i_id].totalMsgs));
         t_msg = replace_str(t_msg, "333", ToCharArray(allChans[i_id].curSubPos - allChans[i_id].curMsgReadPos));
         t_msg = replace_str(t_msg, "444", ToCharArray(allChans[i_id].curSubPos - allChans[i_id].curMsgReadPos));
-        strcpy(msg, str_append(msg, t_msg));
-     
+        strcpy(msg, str_append(msg, t_msg));     
     }
-    return msg;
+    
+    return str_append(msg, "\n");
 }
 
 
@@ -321,7 +322,7 @@ int main(int argc, char * argv[])
    
     if(argc < 2)
     {
-        fprintf(stderr , "Port Num not provided. Program terminated.\n");
+        fprintf(stderr , "\nPort Num not provided. Program terminated.");
         exit(1);
     }
 
@@ -346,14 +347,14 @@ int main(int argc, char * argv[])
 
     // Assign socket address to memory.
     if(bind(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0) //  Returns -1 on failure.    
-        error("Binding failed.");
+        error("\nBinding failed.");
     
     listen(sockfd , MAX_CLIENTS); // Listen on socket using 'socket file discriptor', allow maximum of 'n' (5) connections to server at a time.
     clilen = sizeof(cli_addr); // Set client address memory size.
 
     newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen);
     if(newsockfd < 0)
-        error("Error on Accept,\n");
+        error("\nError on Accept,");
   
      // Channel server setup.
     allChans = calloc(255, sizeof(struct Channel));    
@@ -372,7 +373,7 @@ int main(int argc, char * argv[])
     
     
     WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
-
+    
     while(servrun)
     {
         bzero(buffer , BUFFER_SIZE); // Clear buffer.
@@ -384,7 +385,7 @@ int main(int argc, char * argv[])
         }
           
           
-        printf("Client : %s" , buffer); // Print buffer message.
+        //printf("\nClient : %s" , buffer); // Print buffer message.
         
 
         char* msg;
@@ -403,15 +404,17 @@ int main(int argc, char * argv[])
         }           
         else
         {
-            strcpy(msg , "INVALID INPUT.\n");
+            strcpy(msg , "\nINVALID INPUT.");
         }
-          
+                  
         int n = WriteClient(newsockfd, msg);   
         if(n < 0) // On write fail, wait to reconnect.
         { 
             newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); 
             WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
         }
+       
+        
     }
     close(newsockfd);
     close(sockfd);
