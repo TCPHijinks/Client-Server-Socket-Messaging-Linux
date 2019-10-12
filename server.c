@@ -34,43 +34,47 @@ const int MIN_ID_VAL = 0;
 #include <netinet/in.h> // Contain consts and structs needed for internet domain addresses.
 #include <signal.h>
 
+// Outputs error to terminal and exits program.
 void error(const char *msg)
 {
-    perror(msg); // Output error number and message.
+    perror(msg); 
     exit(1);
 }
 
 static volatile sig_atomic_t servrun = 1;
-static void sig_handler(int _)
+// Stops server.
+static void sig_handler(int _) 
 {
     (void)_;
     servrun = 0;
 }
 
-char * str_append(char* str1, char* str2) // Append strings and return result.
+// Append str2 to end of str1.
+char * str_append(char* str1, char* str2) 
 {
     int n = strlen(str1) + strlen(str2);
     char* t_msg = calloc(n, sizeof(char));
     strcat(t_msg , str1);
     strcat(t_msg, str2);
-    
     return t_msg;
 }
 
+// In str, replace first instance of 'old' string with 'new' one.
 char * replace_str(char *str, char *old, char *new)
 {
   static char buff[4096];
   char *p;
 
-  if(!(p = strstr(str, old)))  // Is 'orig' even in 'str'?
+  if(!(p = strstr(str, old))) 
     return str;
    
-  strncpy(buff, str, p-str); // Copy characters from 'str' start to 'orig' st$
+  strncpy(buff, str, p-str); 
   buff[p-str] = '\0';
   sprintf(buff+(p-str), "%s%s", new, p+strlen(old));
   return buff;
 }
 
+// Return number of digits in integer.
 int NumOfIntegerDigits(int number)
 {
     if(number > 99) { return 3; }
@@ -78,6 +82,7 @@ int NumOfIntegerDigits(int number)
     return 1;
 }
 
+// Convert integer to string.
 char * ToCharArray(int number)
 {
     int n = NumOfIntegerDigits(number);
@@ -86,7 +91,8 @@ char * ToCharArray(int number)
     return cArray;
 }
 
-int WriteClient(int newsockfd, char* buffer) // Write to client.
+// Write message to client and return if failed.
+int WriteClient(int newsockfd, char* buffer) 
 {    
     int n = write(newsockfd , buffer, strlen(buffer));
     return n;
@@ -94,28 +100,36 @@ int WriteClient(int newsockfd, char* buffer) // Write to client.
 
 
 
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////
 struct Message
 {
-    char msg[1024];
+    char msg[1024]; // Message containing 1024 characters.
 };
 
 struct Channel
 {
-    char id[3];
-    int curSubPos; // From where you can read future messages, set on sub.
-    int curMsgReadPos;
-    int totalMsgs;
+    char id[3];         // Identifier of channel. Values of 0-255.
+    int curSubPos;      // Point from where you can read future msgs.
+    int curMsgReadPos;  // Cur point of reading.
+    int totalMsgs;      // Total msgs in channel (readable and not).
     struct Message msgs[255];
 };
-
 struct Channel* allChans;
 
 struct Client
 {
     char id[3];
-    int curChanPos;
+    int curChanPos; // Number of channel subscriptions.
     struct Channel channels[255];
 } client;
+////////////////////////////////////////////////////////////////////////////
 
 
 
@@ -124,9 +138,15 @@ struct Client
 
 
 
-// TO DO: Fix single ASCII defaulting to 0 (e.g. SUB G == SUB 0).
-int ValidID(char* id)  // Verifies that id is completely decimal and inside allowed value range.
-{      
+
+/*
+    Returns if channel ID is valid for use in commands.
+    CONDITIONS:: Completely decimal and in value range of 0-255.
+    INPUT:: Buffer containing id.
+    OUTPUT:: Whether ID is valid for use in commands (0 good, -1 bad).
+*/
+int ValidID(char* id)
+{ // TO DO: Fix single ASCII defaulting to 0 (e.g. SUB G == SUB 0).     
     int i_id = 0; // ID as converted integer.
     sscanf(id, "%d", &i_id); 
     
@@ -141,15 +161,21 @@ int ValidID(char* id)  // Verifies that id is completely decimal and inside allo
 
 
 
+
+/*
+    Return id from buffer.
+    CONDITIONS:: N/A
+    INPUT:: Buffer containing id, length of command and id char length.
+    OUTPUT:: Valid id or bad id.
+*/
 char* GetIdFromBuffer(char buffer[BUFFER_SIZE], int cmdLen, int targetLen) // Gets ID from stdin buffer.
 {    
     int len = cmdLen + 1; // CMD + space.    
     char* id = calloc(4, sizeof(char));
     memcpy(id , &buffer[len] , targetLen); // Get id from terminal entry.
 
-    // Ignore spacing and anything after it if in captured ID.
     char* t_id = calloc(4, sizeof(char));
-    for(int i = 0; i < 3; i++)
+    for(int i = 0; i < 3; i++) // Get ID chars until hit space/end of id.
     {
         if(id[i] != '\0' && id[i] != ' ')
             t_id[i] = id[i];
@@ -168,6 +194,16 @@ char* GetIdFromBuffer(char buffer[BUFFER_SIZE], int cmdLen, int targetLen) // Ge
     return ToCharArray(i_id);
 }
 
+
+
+
+
+/*
+    Return msg contents of 1024 chars length from buffer.
+    CONDITIONS:: Give ID as integer to calculate position of msg start.
+    INPUT:: Buffer containing message and id as an integer.
+    OUTPUT:: 1024 characters following the the channel id (from Send()).
+*/
 char* GetMsgFromBuffer(char buffer[BUFFER_SIZE], int i_id) 
 {
     char* msg = calloc(1024, sizeof(char));
@@ -179,6 +215,13 @@ char* GetMsgFromBuffer(char buffer[BUFFER_SIZE], int i_id)
 
 
 
+
+/*
+    Return index or failure of searching for channel id in subs. 
+    CONDITIONS:: Valid channel id, don't need to be subscribed to it.
+    INPUT:: ID of target channel in buffer.
+    OUTPUT:: Index of chan in subscriptions or -1 if not subbed to it.
+*/
 int GetClientSubIndex(char* id) // Return index of given channel.
 {
     int n = client.curChanPos;
@@ -193,6 +236,13 @@ int GetClientSubIndex(char* id) // Return index of given channel.
 
 
 
+
+/*
+    Unsubscribe client from specified channel.
+    CONDITIONS:: Valid id of channel subscribed to.
+    INPUT:: ID of target channel in buffer.
+    OUTPUT:: Confirmation of removing channel from subscriptions.
+*/
 char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified channel using id.
 {
     char* id = GetIdFromBuffer(buffer, 5, 4);   
@@ -218,9 +268,15 @@ char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified chan
 
 
 
-// TO DO: Change Client Channels * to a "char* chans[3]" for efficency, also set it so starting read pos after last sent msg when sub.
-char* Sub(char buffer[BUFFER_SIZE]) // Subscribes client to channel with given id.
-{       
+
+/*
+    Add given channel to client subscriptions.
+    CONDITIONS:: Valid id of integer value between 0-255.
+    INPUT:: ID of target channel in buffer.
+    OUTPUT:: Confirmation of adding channel to client subs.
+*/
+char* Sub(char buffer[BUFFER_SIZE])
+{ // TO DO: Change Client Channels * to a "char* chans[3]" for efficency, also set it so starting read pos after last sent msg when sub.
     char* id = GetIdFromBuffer(buffer, 3, 4);
 
     if(ValidID(id) < 0) // Return if invalid id.
@@ -238,9 +294,6 @@ char* Sub(char buffer[BUFFER_SIZE]) // Subscribes client to channel with given i
  
     // Add server info to client sub list (replace with char* arr[3] eventually).
     strcpy(client.channels[client.curChanPos].id, allChans[i_id].id);
-   // client.channels[client.curChanPos].curSubPos = allChans[i_id].totalMsgs;
-   // client.channels[client.curChanPos].curMsgReadPos = allChans[i_id].totalMsgs; 
-   // client.channels[client.curChanPos].totalMsgs = allChans[i_id].totalMsgs;
     client.curChanPos++;    
     return replace_str("\nSubscribed to channel xxx.\n","xxx",id);
 }
@@ -249,9 +302,9 @@ char* Sub(char buffer[BUFFER_SIZE]) // Subscribes client to channel with given i
 
 
 /*
-    DOES:: Saves client message to channel messages.
+    Saves client message to channel messages.
     CONDITIONS:: Valid chan ID and 1024 char msg length cutoff.
-    INPUT:: Client terminal input with 'SEND' command keyword.
+    INPUT:: Client to specify channel ID and message in buffer.
     OUTPUT:: Save message to server channel if valid and gives client outcome.
 */
 char* Send(char buffer[BUFFER_SIZE]) 
@@ -268,24 +321,23 @@ char* Send(char buffer[BUFFER_SIZE])
         return replace_str("\nInvalid channel: xxx.\n","xxx",id);
 
     int i_id = atoi(id);
-    char* msg = GetMsgFromBuffer(buffer, i_id);//GetIdFromBuffer(buffer, NumOfIntegerDigits(i_id), len);// Get 1024 chars after "SEND XXX " cmd as a msg.
+    char* msg = GetMsgFromBuffer(buffer, i_id);
     strcpy(allChans[i_id].msgs[allChans[i_id].totalMsgs].msg, msg); // Add message to chan.
-   // allChans[i_id].curSubPos++; // Increase max read pos for subscriber.
     allChans[i_id].totalMsgs++; // Increase total messages sent.
-    return str_append("\n", str_append(allChans[i_id].msgs[allChans[i_id].totalMsgs-1].msg, "\n"));  // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.
+
+    return "\n";  
 }
 
 
 
 
 
-
-
-
-
-
-
-// Return list of subscribed channels.
+/*
+    Returns info on all subsribed channels to be sent to client.
+    CONDITIONS:: Won't return anything if no subscriptions.
+    INPUT:: N/A (uses global client subscription list).
+    OUTPUT:: Formatted list of channels and their info as msg buffer.
+*/
 char* Channels()
 {
     if(client.curChanPos <= 0)    
@@ -295,21 +347,27 @@ char* Channels()
     strcpy(msg, "\nChannel Subscriptions"); 
     for(int i = 0; i < client.curChanPos; i++)
     {
-        int i_id = atoi(client.channels[i].id); // Convert id of sub channels to int.
-
-        char* t_msg = "\nChannel: 111\tTotal Messages: 222\tRead: 333\tUnread 444";        
-        t_msg = replace_str(t_msg, "111", allChans[i_id].id); // Use converted id to get live channel info (e.g. id of 5 is used as index 5 to get info)
+        int i_id = atoi(client.channels[i].id); // Subbed channel[i] id as int.
+        char* t_msg = "\nChannel: 111\tTotal Messages: 222\tRead: 333\tUnread 444\n"; 
+        t_msg = replace_str(t_msg, "111", allChans[i_id].id); 
         t_msg = replace_str(t_msg, "222", ToCharArray(allChans[i_id].totalMsgs));
         t_msg = replace_str(t_msg, "333", ToCharArray(allChans[i_id].curMsgReadPos - allChans[i_id].curSubPos));
         t_msg = replace_str(t_msg, "444", ToCharArray(allChans[i_id].totalMsgs - allChans[i_id].curMsgReadPos));
-        strcpy(msg, str_append(msg, t_msg));     
+        strcpy(msg, str_append(msg, t_msg)); // Append channel info to msg buffer.    
     }    
-    return str_append(msg, "\n");
+    return msg;
 }
 
 
 
 
+
+/*
+    Gracefully terminates connection to client, leaving server online.
+    CONDITIONS:: Client is connected to server.
+    INPUT:: Socket id of client.
+    OUTPUT:: N/A (removes all subscriptions and disconnects client).
+*/
 void Bye(int newsockfd)
 {
     for(int i = client.curChanPos; i >= 0 ; i--) // Unsub from all cur channels.
@@ -322,6 +380,16 @@ void Bye(int newsockfd)
     close(newsockfd);
 }
 
+
+
+
+
+/*
+    Returns next unread message of specified channel ID.
+    CONDITIONS:: Client subbed to channel and has unread message.
+    INPUT:: ID of channel to display message from in buffer.
+    OUTPUT:: Next unread message.
+*/
 char* Next(char* buffer)
 {
     char* id = GetIdFromBuffer(buffer, 4, 4);    
@@ -339,6 +407,10 @@ char* Next(char* buffer)
     return "\n";
 }
 
+
+
+
+
 //char* Next()
 //{
 
@@ -347,6 +419,13 @@ char* Next(char* buffer)
 
 
 
+
+/*
+    Main logic.
+    Sets up server and beings passively listening.
+    Actively listen for client commands and run relevant responses.
+    If fail to read/write to client, try reconnect.
+*/
 int main(int argc, char * argv[])
 {
     //  signal(SIGINT, sig_handler);
@@ -405,10 +484,6 @@ int main(int argc, char * argv[])
             newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen);
             WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
         }
-          
-          
-        //printf("\nClient : %s" , buffer); // Print buffer message.
-        
 
         char* msg;
         if(strstr(buffer , "UNSUB") != NULL)
