@@ -124,7 +124,7 @@ struct Client
 
 
 
-// TO DO: WORK WITH LEADING ZEROS (e.g. 004 or 098) && FIX single ASCII defaulting to 0 (e.g. SUB G == SUB 0).
+// TO DO: Fix single ASCII defaulting to 0 (e.g. SUB G == SUB 0).
 int ValidID(char* id)  // Verifies that id is completely decimal and inside allowed value range.
 {      
     int i_id = 0; // ID as converted integer.
@@ -141,7 +141,7 @@ int ValidID(char* id)  // Verifies that id is completely decimal and inside allo
 
 
 
-char* GetBufferString(char buffer[BUFFER_SIZE], int cmdLen, int targetLen) // Gets ID from stdin buffer.
+char* GetIdFromBuffer(char buffer[BUFFER_SIZE], int cmdLen, int targetLen) // Gets ID from stdin buffer.
 {    
     int len = cmdLen + 1; // CMD + space.    
     char* id = calloc(4, sizeof(char));
@@ -168,10 +168,18 @@ char* GetBufferString(char buffer[BUFFER_SIZE], int cmdLen, int targetLen) // Ge
     return ToCharArray(i_id);
 }
 
+char* GetMsgFromBuffer(char buffer[BUFFER_SIZE], int i_id) 
+{
+    char* msg = calloc(1024, sizeof(char));
+    int len = 4 + 2 + NumOfIntegerDigits(i_id); // CMD + (space * 2) + ID Len.    
+    memcpy(msg , &buffer[len] , 1024); // Get id from terminal entry.
+    return msg;
+}
 
 
 
-int GetChanIndex(char* id) // Return index of given channel.
+
+int GetClientSubIndex(char* id) // Return index of given channel.
 {
     int n = client.curChanPos;
     for(int i = 0; i < n; i++)
@@ -185,13 +193,13 @@ int GetChanIndex(char* id) // Return index of given channel.
 
 
 
-char* Unsub(char buffer[BUFFER_SIZE])
+char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified channel using id.
 {
-    char* id = GetBufferString(buffer, 5, 4);   
+    char* id = GetIdFromBuffer(buffer, 5, 4);   
     if(ValidID(id) < 0) // Invalid id.
         return replace_str("\nInvalid channel: xxx.\n","xxx",id);
 
-    int i = GetChanIndex(id);
+    int i = GetClientSubIndex(id);
     if(i < 0) // Not subscribed to this chan id.
         return replace_str("\nNot subscribed to channel: xxx.\n","xxx",id);
 
@@ -211,14 +219,14 @@ char* Unsub(char buffer[BUFFER_SIZE])
 
 
 // TO DO: Change Client Channels * to a "char* chans[3]" for efficency, also set it so starting read pos after last sent msg when sub.
-char* Sub(char buffer[BUFFER_SIZE])
+char* Sub(char buffer[BUFFER_SIZE]) // Subscribes client to channel with given id.
 {       
-    char* id = GetBufferString(buffer, 3, 4);
+    char* id = GetIdFromBuffer(buffer, 3, 4);
 
     if(ValidID(id) < 0) // Return if invalid id.
         return replace_str("\nInvalid channel: xxx\n","xxx",id);
 
-    if(GetChanIndex(id) >= 0)
+    if(GetClientSubIndex(id) >= 0)
         return replace_str("\nAlready subscribed to channel xxx\n.","xxx",id);
     
     
@@ -227,24 +235,28 @@ char* Sub(char buffer[BUFFER_SIZE])
     // Set so when sub, start reading after latest msg.
     allChans[i_id].curSubPos = allChans[i_id].totalMsgs;
     allChans[i_id].curMsgReadPos = allChans[i_id].totalMsgs;
-
+ 
     // Add server info to client sub list (replace with char* arr[3] eventually).
     strcpy(client.channels[client.curChanPos].id, allChans[i_id].id);
-    client.channels[client.curChanPos].curSubPos = allChans[i_id].totalMsgs;
-    client.channels[client.curChanPos].curMsgReadPos = allChans[i_id].totalMsgs; 
-    client.channels[client.curChanPos].totalMsgs = allChans[i_id].totalMsgs;
+   // client.channels[client.curChanPos].curSubPos = allChans[i_id].totalMsgs;
+   // client.channels[client.curChanPos].curMsgReadPos = allChans[i_id].totalMsgs; 
+   // client.channels[client.curChanPos].totalMsgs = allChans[i_id].totalMsgs;
     client.curChanPos++;    
-
     return replace_str("\nSubscribed to channel xxx.\n","xxx",id);
 }
 
 
 
 
-
-char* Send(char buffer[BUFFER_SIZE])
+/*
+    DOES:: Saves client message to channel messages.
+    CONDITIONS:: Valid chan ID and 1024 char msg length cutoff.
+    INPUT:: Client terminal input with 'SEND' command keyword.
+    OUTPUT:: Save message to server channel if valid and gives client outcome.
+*/
+char* Send(char buffer[BUFFER_SIZE]) 
 {
-    char* id = GetBufferString(buffer, 4, 4);
+    char* id = GetIdFromBuffer(buffer, 4, 4);
     int len = strlen(buffer) - 9;
 
     if(len > 1024) // limit msg length.
@@ -252,18 +264,15 @@ char* Send(char buffer[BUFFER_SIZE])
     if (len < 0)
         len = 0;
 
-     // ID as integer.
-    //struct Message m; // Message to send.
-    
-
     if(ValidID(id) < 0) // Return if invalid id.
         return replace_str("\nInvalid channel: xxx.\n","xxx",id);
 
     int i_id = atoi(id);
-    char* msg = GetBufferString(buffer, NumOfIntegerDigits(i_id), len);// Get 1024 chars after "SEND XXX " cmd as a msg.
+    char* msg = GetMsgFromBuffer(buffer, i_id);//GetIdFromBuffer(buffer, NumOfIntegerDigits(i_id), len);// Get 1024 chars after "SEND XXX " cmd as a msg.
     strcpy(allChans[i_id].msgs[allChans[i_id].totalMsgs].msg, msg); // Add message to chan.
-    allChans[i_id].totalMsgs++;
-    return "\n";  // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.
+   // allChans[i_id].curSubPos++; // Increase max read pos for subscriber.
+    allChans[i_id].totalMsgs++; // Increase total messages sent.
+    return str_append("\n", str_append(allChans[i_id].msgs[allChans[i_id].totalMsgs-1].msg, "\n"));  // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.
 }
 
 
@@ -279,12 +288,9 @@ char* Send(char buffer[BUFFER_SIZE])
 // Return list of subscribed channels.
 char* Channels()
 {
-    if(client.curChanPos <= 0)
-    {
-        return "\n"; // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.
-    }
+    if(client.curChanPos <= 0)    
+        return "\n"; // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.s    
         
-
     char *msg = calloc(BUFFER_SIZE , sizeof(char)); 
     strcpy(msg, "\nChannel Subscriptions"); 
     for(int i = 0; i < client.curChanPos; i++)
@@ -294,11 +300,10 @@ char* Channels()
         char* t_msg = "\nChannel: 111\tTotal Messages: 222\tRead: 333\tUnread 444";        
         t_msg = replace_str(t_msg, "111", allChans[i_id].id); // Use converted id to get live channel info (e.g. id of 5 is used as index 5 to get info)
         t_msg = replace_str(t_msg, "222", ToCharArray(allChans[i_id].totalMsgs));
-        t_msg = replace_str(t_msg, "333", ToCharArray(allChans[i_id].curSubPos - allChans[i_id].curMsgReadPos));
-        t_msg = replace_str(t_msg, "444", ToCharArray(allChans[i_id].curSubPos - allChans[i_id].curMsgReadPos));
+        t_msg = replace_str(t_msg, "333", ToCharArray(allChans[i_id].curMsgReadPos - allChans[i_id].curSubPos));
+        t_msg = replace_str(t_msg, "444", ToCharArray(allChans[i_id].totalMsgs - allChans[i_id].curMsgReadPos));
         strcpy(msg, str_append(msg, t_msg));     
-    }
-    
+    }    
     return str_append(msg, "\n");
 }
 
@@ -317,6 +322,28 @@ void Bye(int newsockfd)
     close(newsockfd);
 }
 
+char* Next(char* buffer)
+{
+    char* id = GetIdFromBuffer(buffer, 4, 4);    
+    if(ValidID(id) < 0)
+        return replace_str("\nInvalid channel: XXX\n", "XXX", id);
+    
+    if(GetClientSubIndex(id) < 0)
+        return replace_str("\nNot subscribed to channel XXX\n", "XXX", id);
+    
+    if(allChans[atoi(id)].totalMsgs - allChans[atoi(id)].curMsgReadPos > 0)
+    {
+        allChans[atoi(id)].curMsgReadPos++; 
+        return allChans[atoi(id)].msgs[allChans[atoi(id)].curMsgReadPos - 1].msg;
+    }
+    return "\n";
+}
+
+//char* Next()
+//{
+
+//}
+
 
 
 
@@ -332,8 +359,7 @@ int main(int argc, char * argv[])
     bzero((char *) &serv_addr , sizeof(serv_addr)); // Clear any data in reference (make sure serv_addr empty).
     sockfd = socket(AF_INET, SOCK_STREAM, 0);       // IPv4, TCP, default to TCP.
     if(sockfd < 0) error("Error opening socket.");  // Failed.
-    
-   
+       
     if(argc < 2) // Default to port 12345 if no port arg given.
         portno = 12345;
     else
@@ -395,6 +421,8 @@ int main(int argc, char * argv[])
             strcpy(msg, Send(buffer));
         else if(strstr(buffer , "BYE") != NULL)            
             Bye(newsockfd);
+        else if(strstr(buffer , "NEXT") != NULL)    
+             strcpy(msg , Next(buffer));
         else
             strcpy(msg , "\nINVALID INPUT.");
         
