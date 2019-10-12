@@ -108,8 +108,10 @@ int WriteClient(int newsockfd, char* buffer)
 
 
 ////////////////////////////////////////////////////////////////////////////
+long curMsgReadPriority = 0;
 struct Message
 {
+    long readPriority;
     char msg[1024]; // Message containing 1024 characters.
 };
 
@@ -291,12 +293,13 @@ char* Sub(char buffer[BUFFER_SIZE])
     // Set so when sub, start reading after latest msg.
     allChans[i_id].curSubPos = allChans[i_id].totalMsgs;
     allChans[i_id].curMsgReadPos = allChans[i_id].totalMsgs;
- 
+    
     // Add server info to client sub list (replace with char* arr[3] eventually).
     strcpy(client.channels[client.curChanPos].id, allChans[i_id].id);
     client.curChanPos++;    
     return replace_str("\nSubscribed to channel xxx.\n","xxx",id);
 }
+
 
 
 
@@ -322,10 +325,16 @@ char* Send(char buffer[BUFFER_SIZE])
 
     int i_id = atoi(id);
     char* msg = GetMsgFromBuffer(buffer, i_id);
-    strcpy(allChans[i_id].msgs[allChans[i_id].totalMsgs].msg, msg); // Add message to chan.
-    allChans[i_id].totalMsgs++; // Increase total messages sent.
+    strcpy(allChans[i_id].msgs[allChans[i_id].totalMsgs].msg, msg); // Add message to channel.
+    
+    // Assign read order priority to message if subbed to channel sent to.
+    if(GetClientSubIndex(id) >= 0) {   
+        allChans[i_id].msgs[allChans[i_id].totalMsgs].readPriority = curMsgReadPriority;
+        curMsgReadPriority++;   
+    } 
 
-    return "\n";  
+    allChans[i_id].totalMsgs++; // Increase total messages sent.
+    return "\n";  // Return nothing (FIX so actually nothing).
 }
 
 
@@ -348,14 +357,14 @@ char* Channels()
     for(int i = 0; i < client.curChanPos; i++)
     {
         int i_id = atoi(client.channels[i].id); // Subbed channel[i] id as int.
-        char* t_msg = "\nChannel: 111\tTotal Messages: 222\tRead: 333\tUnread 444\n"; 
+        char* t_msg = "\nChannel: 111\tTotal Messages: 222\tRead: 333\tUnread 444"; 
         t_msg = replace_str(t_msg, "111", allChans[i_id].id); 
         t_msg = replace_str(t_msg, "222", ToCharArray(allChans[i_id].totalMsgs));
         t_msg = replace_str(t_msg, "333", ToCharArray(allChans[i_id].curMsgReadPos - allChans[i_id].curSubPos));
         t_msg = replace_str(t_msg, "444", ToCharArray(allChans[i_id].totalMsgs - allChans[i_id].curMsgReadPos));
         strcpy(msg, str_append(msg, t_msg)); // Append channel info to msg buffer.    
     }    
-    return msg;
+    return str_append(msg, "\n");
 }
 
 
@@ -411,10 +420,43 @@ char* Next(char* buffer)
 
 
 
-//char* Next()
-//{
+/*
+    Returns next unread message of any channel using FIFO.
+    CONDITIONS:: If subbed to channel, if unread messages & order sent.
+    INPUT:: N/A (checks IDs of subs to see which unread message to read first).
+    OUTPUT:: Oldest readable message in any subscribed server.
+*/
+char* NextAll()
+{
+    if(client.curChanPos == 0) // If not return min length, no subs.
+        return "Not subscribed to any channels.";
 
-//}
+    int nextChanID = 99999;
+    long nextMsgRdPriority = 99999;
+   
+    for(int i = 0; i < client.curChanPos; i++) // Loop through subscriptions.
+    {
+        if(allChans[atoi(client.channels[i].id)].curMsgReadPos < allChans[atoi(client.channels[i].id)].totalMsgs)
+        {
+            int readPos = allChans[atoi(client.channels[i].id)].curMsgReadPos;
+            if(allChans[atoi(client.channels[i].id)].msgs[readPos].readPriority < nextMsgRdPriority) // Check if msg higher priority.
+            {
+                nextChanID = atoi(client.channels[i].id);
+                nextMsgRdPriority = allChans[atoi(client.channels[i].id)].msgs[readPos].readPriority;   
+            }           
+        } 
+    }
+
+    if(nextChanID >= 99999) // No new messages, return nothing.
+        return "\n";
+
+    
+    curMsgReadPriority = nextMsgRdPriority + 1;
+    allChans[nextChanID].curMsgReadPos++;
+    return str_append(str_append(ToCharArray(nextChanID),":"), allChans[nextChanID].msgs[allChans[nextChanID].curMsgReadPos-1].msg);
+}
+
+
 
 
 
@@ -496,8 +538,11 @@ int main(int argc, char * argv[])
             strcpy(msg, Send(buffer));
         else if(strstr(buffer , "BYE") != NULL)            
             Bye(newsockfd);
-        else if(strstr(buffer , "NEXT") != NULL)    
-             strcpy(msg , Next(buffer));
+        else if(strstr(buffer , "NEXT") != NULL)  
+            if(strlen(buffer) >= 6)  
+                strcpy(msg , Next(buffer));
+            else
+                strcpy(msg , NextAll());
         else
             strcpy(msg , "\nINVALID INPUT.");
         
