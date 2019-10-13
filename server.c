@@ -456,13 +456,36 @@ char* NextAll()
 //
 void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
 {
+    char* newBuffer = calloc(BUFFER_SIZE, sizeof(char));
+
+    if(strlen(buffer) >= 12) // iF Included an ID in cmd, construct as Next ID cmd.
+        strcpy(newBuffer, replace_str(buffer, "LIVESTREAM", "NEXT"));
     while(1)
     {
-        char* msg = NextAll();
-        if(strlen(msg) > 0)
+        if(strlen(newBuffer) > 0)
         {
-            WriteClient(newsockfd, msg);
-        }            
+            char* msg = Next(newBuffer);
+            if(strlen(msg) > 0)            
+                WriteClient(newsockfd, msg); 
+            else
+            {
+                break;
+            }
+            
+        }
+        else
+        {
+            char* msg = NextAll();
+            if(strlen(msg) > 0)            
+                WriteClient(newsockfd, msg);   
+            else
+            {
+                break;
+            }
+                                
+        }
+        
+       
     }
 }
 
