@@ -1,20 +1,13 @@
-﻿/* 
-    TO DO:
-    > Don't accept ctrl+c from client as will shut down serv as well (maybe do as a client-side fix?)
-        * Allow client to accept ctrl+c as this should shut it down.
-*/
-
-/*
+﻿/*
     Required args: filename portno
     e.g. ./server 9999
 
     argv[0] filename
-    argv[1] portno
+    argv[1] portno (optional)
 
 */
-
-
 #define BUFFER_SIZE 2040
+#define DEFAULT_PORT 12345
 const int MAX_CLIENTS = 1;
 const int MAX_ID_VAL = 255;
 const int MIN_ID_VAL = 0;
@@ -111,6 +104,7 @@ char * ToCharArray(int number)
 // Write message to client and return if failed.
 int WriteClient(int newsockfd, char* buffer) 
 {    
+
     int n = write(newsockfd , buffer, strlen(buffer));
     return n;
 }
@@ -479,25 +473,40 @@ char* NextAll()
 //
 void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
 {
+    printf("Start streaming!\n");
     streaming = 1;
     char* newBuffer = calloc(BUFFER_SIZE, sizeof(char));
     
     if(strlen(buffer) >= 12) // If included an chan ID in cmd, construct as Next ID cmd.
         strcpy(newBuffer, replace_str(buffer, "LIVESTREAM", "NEXT"));
+    
     while(streaming == 1)
     {
+      char* msg = calloc(BUFFER_SIZE, sizeof(char));
         if(strlen(newBuffer) > 0)
         {
-            char* msg = Next(newBuffer);
+            strcpy(msg, Next(newBuffer));
             if(strlen(msg) > 0)            
                 WriteClient(newsockfd, msg); 
         }
         else
         {
-            char* msg = NextAll();
-            if(strlen(msg) > 0)            
-                WriteClient(newsockfd, msg); 
+            WriteClient(newsockfd, "​");
         }
+        
+       
+            
+       
+
+        bzero(buffer , BUFFER_SIZE); // Clear buffer.
+        read(newsockfd , buffer , BUFFER_SIZE);
+     
+        if (strstr(buffer, "[+Hide-] EXEC EXIT SERVER") != NULL)
+        {
+            streaming = 0;
+        }
+
+        sleep(.6);
     }
     return;
 }
@@ -528,7 +537,7 @@ int main(int argc, char * argv[])
     sockfd = socket(AF_INET, SOCK_STREAM, 0);       // IPv4, TCP, default to TCP.
     
     if(sockfd < 0) Error("Failed to open requested socket!\n");
-    if(argc < 2) portno = 12345; // Default port if not specified.
+    if(argc < 2) portno = DEFAULT_PORT; // Default port if not specified.
     else portno = atoi(argv[1]); // Custom port number.
 
     serv_addr.sin_family = AF_INET;
@@ -571,13 +580,13 @@ int main(int argc, char * argv[])
         }
 
         char* msg;
-        if(strstr(buffer , "UNSUB") != NULL)
+        if(strstr(buffer , "UNSUB ") != NULL)
             strcpy(msg , Unsub(buffer));          
-        else if(strstr(buffer , "SUB") != NULL)                
+        else if(strstr(buffer , "SUB ") != NULL)                
             strcpy(msg , Sub(buffer)); 
         else if(strstr(buffer , "CHANNELS") != NULL)
             strcpy(msg, Channels());
-        else if(strstr(buffer , "SEND") != NULL)
+        else if(strstr(buffer , "SEND ") != NULL)
             strcpy(msg, Send(buffer));
         else if(strstr(buffer , "BYE") != NULL)            
             Bye(newsockfd);
@@ -590,8 +599,7 @@ int main(int argc, char * argv[])
             strcpy(msg , "");
         if(strstr(buffer, "LIVESTREAM") != NULL)  
             LiveStream(newsockfd, buffer);
-        if(strstr(buffer , "[+Hide-] EXEC EXIT SERVER") != NULL)
-            StopServer();
+        
         
         
                   

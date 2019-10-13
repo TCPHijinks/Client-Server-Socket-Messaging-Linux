@@ -8,6 +8,8 @@
 
 */
 int sockfd;
+int servrun = 1;
+int streaming = 0;
 
 #define BUFFER_SIZE 2040
 
@@ -26,14 +28,14 @@ void error(const char *msg)
     perror(msg); // Output error number and message.
     exit(0);
 }
-int servrun = 1;
+
 /* Signal Handler for SIGINT */
 void sigintHandler(int sig_num) 
 { 
-    /* Reset handler to catch SIGINT next time. 
-       Refer http://en.cppreference.com/w/c/program/signal */
+    printf("\nSTOP\n");
+    streaming = 0;
     signal(SIGINT, sigintHandler);    
-    write(sockfd , "//[+Hide-] EXEC EXIT SERVER" , strlen("[+Hide-] EXEC EXIT SERVER"));
+    write(sockfd , "[+Hide-] EXEC EXIT SERVER" , strlen("[+Hide-] EXEC EXIT SERVER"));
     printf("\n");
     fflush(stdout); 
     fflush(stdin); 
@@ -95,9 +97,10 @@ int main(int argc , char *argv[])
     if(n < 0) error("Error on read.");      // Throw error if connection issue.
     printf("%s",buffer);                    // Print server buffer to terminal.
 
-    
+    int streamExited = 0;
     while(servrun == 1)
     {
+       
         bzero(buffer , BUFFER_SIZE);
         fgets(buffer , BUFFER_SIZE , stdin); // Get terminal input (wait point).
         strcpy(buffer, replace_str(buffer, "[+Hide-] EXEC EXIT SERVER", "N/A")); // Temp, prevent client closing server. 
@@ -105,6 +108,38 @@ int main(int argc , char *argv[])
         if(n < 0) error("Error on write.");        
         if(strstr(buffer , "BYE") != NULL)
             servrun = 0;
+        if(strstr(buffer , "LIVESTREAM") != NULL)
+            streaming = 1;
+
+        while (streaming == 1)
+        {
+            streamExited = 1;
+            bzero(buffer , BUFFER_SIZE); // Clear buffer.
+            read(sockfd , buffer , BUFFER_SIZE);
+            
+            printf("%s",buffer);
+            if(streaming == 0)
+                break;
+            char* msg = "tehee\n";
+            write(sockfd , msg , strlen(msg));
+           // printf("Message sent.\n");
+            
+
+            sleep(.6);
+        }
+
+        if(streamExited == 1)
+        {
+            write(sockfd , "[+Hide-] EXEC EXIT SERVER" , strlen("[+Hide-] EXEC EXIT SERVER"));
+            streamExited = 0;
+        }
+                
+
+
+
+
+
+
 
         bzero(buffer , BUFFER_SIZE); // Empty.
         n = read(sockfd , buffer , BUFFER_SIZE); // Read buffer from server.
