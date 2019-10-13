@@ -32,11 +32,9 @@ void error(const char *msg)
 /* Signal Handler for SIGINT */
 void sigintHandler(int sig_num) 
 { 
-    printf("\nSTOP\n");
     streaming = 0;
     signal(SIGINT, sigintHandler);    
     write(sockfd , "[+Hide-] EXEC EXIT SERVER" , strlen("[+Hide-] EXEC EXIT SERVER"));
-    printf("\n");
     fflush(stdout); 
     fflush(stdin); 
 } 
@@ -97,7 +95,7 @@ int main(int argc , char *argv[])
     if(n < 0) error("Error on read.");      // Throw error if connection issue.
     printf("%s",buffer);                    // Print server buffer to terminal.
 
-    int streamExited = 0;
+   
     while(servrun == 1)
     {
        
@@ -112,34 +110,19 @@ int main(int argc , char *argv[])
             streaming = 1;
 
         while (streaming == 1)
-        {
-            streamExited = 1;
+        {          
             bzero(buffer , BUFFER_SIZE); // Clear buffer.
             read(sockfd , buffer , BUFFER_SIZE);
             
             printf("%s",buffer);
             if(streaming == 0)
                 break;
-            char* msg = "tehee\n";
+
+            char* msg = "​​";
             write(sockfd , msg , strlen(msg));
-           // printf("Message sent.\n");
-            
 
             sleep(.6);
         }
-
-        if(streamExited == 1)
-        {
-            write(sockfd , "[+Hide-] EXEC EXIT SERVER" , strlen("[+Hide-] EXEC EXIT SERVER"));
-            streamExited = 0;
-        }
-                
-
-
-
-
-
-
 
         bzero(buffer , BUFFER_SIZE); // Empty.
         n = read(sockfd , buffer , BUFFER_SIZE); // Read buffer from server.
@@ -149,5 +132,4 @@ int main(int argc , char *argv[])
     
     close(sockfd);
     return 0;
-
 }

@@ -470,7 +470,12 @@ char* NextAll()
 
 
 
-//
+/*
+    Writes unread msgs in real time for either a single or all chans.
+    CONDITIONS:: Whether single chan or all and if exit.
+    INPUT:: Client socket and buffer containing livestream cmd.
+    OUTPUT:: Oldest unread message in real time of single or all chans.
+*/
 void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
 {
     printf("Start streaming!\n");
@@ -480,32 +485,32 @@ void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
     if(strlen(buffer) >= 12) // If included an chan ID in cmd, construct as Next ID cmd.
         strcpy(newBuffer, replace_str(buffer, "LIVESTREAM", "NEXT"));
     
-    while(streaming == 1)
+    while(streaming == 1) 
     {
-      char* msg = calloc(BUFFER_SIZE, sizeof(char));
-        if(strlen(newBuffer) > 0)
-        {
+        char* msg = calloc(BUFFER_SIZE, sizeof(char));
+
+        if(strlen(newBuffer) > 0) { // Livestream msgs for specified channel.
             strcpy(msg, Next(newBuffer));
             if(strlen(msg) > 0)            
                 WriteClient(newsockfd, msg); 
         }
-        else
-        {
+        else { // Livestream msgs for all channels.            
+            strcpy(msg, NextAll());
+            if(strlen(msg) > 0)            
+                WriteClient(newsockfd, msg); 
+        }
+        if(strlen(msg) <= 0) { // Livestream nothing if no msg.
             WriteClient(newsockfd, "​");
         }
-        
-       
-            
-       
 
-        bzero(buffer , BUFFER_SIZE); // Clear buffer.
+        bzero(buffer , BUFFER_SIZE); 
         read(newsockfd , buffer , BUFFER_SIZE);
-     
-        if (strstr(buffer, "[+Hide-] EXEC EXIT SERVER") != NULL)
-        {
-            streaming = 0;
-        }
 
+        if (strstr(buffer, "[+Hide-] EXEC EXIT SERVER") != NULL) { // Exit when recieve from client.
+            bzero(buffer , BUFFER_SIZE); 
+            streaming = 0;
+            break;
+        }
         sleep(.6);
     }
     return;
