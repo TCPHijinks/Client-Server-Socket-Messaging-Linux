@@ -1,10 +1,4 @@
- // aPPEND TO MSG BUFFER.
-            //strcpy(msg, str_append(msg, "HAHAHAHAHAHA"));//////////////////////
-            //strcpy(msg, str_append(msg, "__HAHAHAHAHAHA"));///////////////////
-
-
-
-/* 
+﻿/* 
     TO DO:
     > Don't accept ctrl+c from client as will shut down serv as well (maybe do as a client-side fix?)
         * Allow client to accept ctrl+c as this should shut it down.
@@ -249,11 +243,11 @@ char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified chan
 {
     char* id = GetIdFromBuffer(buffer, 5, 4);   
     if(ValidID(id) < 0) // Invalid id.
-        return replace_str("\nInvalid channel: xxx.\n","xxx",id);
+        return replace_str("Invalid channel: xxx.\n","xxx",id);
 
     int i = GetClientSubIndex(id);
     if(i < 0) // Not subscribed to this chan id.
-        return replace_str("\nNot subscribed to channel: xxx.\n","xxx",id);
+        return replace_str("Not subscribed to channel: xxx.\n","xxx",id);
 
     for(;i < client.curChanPos; i++)
     {
@@ -264,7 +258,7 @@ char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified chan
     }
     if(client.curChanPos > 0)
         client.curChanPos -= 1;    
-    return replace_str("\nUsubscribed from channel: xxx.\n","xxx",id);
+    return replace_str("Usubscribed from channel: xxx.\n","xxx",id);
 }
 
 
@@ -282,10 +276,10 @@ char* Sub(char buffer[BUFFER_SIZE])
     char* id = GetIdFromBuffer(buffer, 3, 4);
 
     if(ValidID(id) < 0) // Return if invalid id.
-        return replace_str("\nInvalid channel: xxx\n","xxx",id);
+        return replace_str("Invalid channel: xxx\n","xxx",id);
 
     if(GetClientSubIndex(id) >= 0)
-        return replace_str("\nAlready subscribed to channel xxx\n.","xxx",id);
+        return replace_str("Already subscribed to channel xxx\n.","xxx",id);
     
     
     int i_id = atoi(id);
@@ -297,7 +291,7 @@ char* Sub(char buffer[BUFFER_SIZE])
     // Add server info to client sub list (replace with char* arr[3] eventually).
     strcpy(client.channels[client.curChanPos].id, allChans[i_id].id);
     client.curChanPos++;    
-    return replace_str("\nSubscribed to channel xxx.\n","xxx",id);
+    return replace_str("Subscribed to channel xxx.\n","xxx",id);
 }
 
 
@@ -321,7 +315,7 @@ char* Send(char buffer[BUFFER_SIZE])
         len = 0;
 
     if(ValidID(id) < 0) // Return if invalid id.
-        return replace_str("\nInvalid channel: xxx.\n","xxx",id);
+        return replace_str("Invalid channel: xxx.\n","xxx",id);
 
     int i_id = atoi(id);
     char* msg = GetMsgFromBuffer(buffer, i_id);
@@ -334,7 +328,7 @@ char* Send(char buffer[BUFFER_SIZE])
     } 
 
     allChans[i_id].totalMsgs++; // Increase total messages sent.
-    return "\n";  // Return nothing (FIX so actually nothing).
+    return "​​";  // Return nothing (FIX so actually nothing).
 }
 
 
@@ -350,14 +344,14 @@ char* Send(char buffer[BUFFER_SIZE])
 char* Channels()
 {
     if(client.curChanPos <= 0)    
-        return "\n"; // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.s    
+        return "​"; // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.s    
         
     char *msg = calloc(BUFFER_SIZE , sizeof(char)); 
-    strcpy(msg, "\nChannel Subscriptions"); 
+    strcpy(msg, "Channel Subscriptions\n"); 
     for(int i = 0; i < client.curChanPos; i++)
     {
         int i_id = atoi(client.channels[i].id); // Subbed channel[i] id as int.
-        char* t_msg = "\nChannel: 111\tTotal Messages: 222\tRead: 333\tUnread 444"; 
+        char* t_msg = "Channel: 111\tTotal Messages: 222\tRead: 333\tUnread 444"; 
         t_msg = replace_str(t_msg, "111", allChans[i_id].id); 
         t_msg = replace_str(t_msg, "222", ToCharArray(allChans[i_id].totalMsgs));
         t_msg = replace_str(t_msg, "333", ToCharArray(allChans[i_id].curMsgReadPos - allChans[i_id].curSubPos));
@@ -382,7 +376,7 @@ void Bye(int newsockfd)
     for(int i = client.curChanPos; i >= 0 ; i--) // Unsub from all cur channels.
     {
         char* b = calloc(BUFFER_SIZE, sizeof(char));
-        strcpy(b, replace_str("UNSUB XXX", "XXX", client.channels[i].id));       
+        strcpy(b, replace_str("UNSUB XXX\n", "XXX", client.channels[i].id));       
         Unsub(b);
     }
     strcpy(client.id, ToCharArray(atoi(client.id) + 1)); // Increment client id.
@@ -403,17 +397,17 @@ char* Next(char* buffer)
 {
     char* id = GetIdFromBuffer(buffer, 4, 4);    
     if(ValidID(id) < 0)
-        return replace_str("\nInvalid channel: XXX\n", "XXX", id);
+        return replace_str("Invalid channel: XXX\n", "XXX", id);
     
     if(GetClientSubIndex(id) < 0)
-        return replace_str("\nNot subscribed to channel XXX\n", "XXX", id);
+        return replace_str("Not subscribed to channel XXX\n", "XXX", id);
     
     if(allChans[atoi(id)].totalMsgs - allChans[atoi(id)].curMsgReadPos > 0)
     {
         allChans[atoi(id)].curMsgReadPos++; 
         return allChans[atoi(id)].msgs[allChans[atoi(id)].curMsgReadPos - 1].msg;
     }
-    return "\n";
+    return "";
 }
 
 
@@ -429,7 +423,7 @@ char* Next(char* buffer)
 char* NextAll()
 {
     if(client.curChanPos == 0) // If not return min length, no subs.
-        return "Not subscribed to any channels.";
+        return "Not subscribed to any channels.\n";
 
     int nextChanID = 99999;
     long nextMsgRdPriority = 99999;
@@ -448,13 +442,26 @@ char* NextAll()
     }
 
     if(nextChanID >= 99999) // No new messages, return nothing.
-        return "\n";
-
+        return "";
     
     curMsgReadPriority = nextMsgRdPriority + 1;
     allChans[nextChanID].curMsgReadPos++;
     return str_append(str_append(ToCharArray(nextChanID),":"), allChans[nextChanID].msgs[allChans[nextChanID].curMsgReadPos-1].msg);
 }
+
+
+
+
+
+//
+void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
+{
+    while(1)
+    {
+        WriteClient(newsockfd, buffer);
+    }
+}
+
 
 
 
@@ -493,13 +500,13 @@ int main(int argc, char * argv[])
 
     
     if(bind(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0) // Assign socket address to memory.   
-        error("\nBinding failed.");
+        error("Binding failed.");
     
     listen(sockfd , MAX_CLIENTS); // Start passively listening using given socket.
     clilen = sizeof(cli_addr);    // Set client address memory size.
 
     newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); // Wait until accept client connection.
-    if(newsockfd < 0) error("\nError on Accept.\n"); // Failed.
+    if(newsockfd < 0) error("Error on Accept.\n"); // Failed.
   
     // Channel server setup.
     allChans = calloc(255, sizeof(struct Channel));    
@@ -544,10 +551,11 @@ int main(int argc, char * argv[])
             else
                 strcpy(msg , NextAll());
         else
-            strcpy(msg , "\nINVALID INPUT.");
+            strcpy(msg , "​​​");
         
                   
-        int n = WriteClient(newsockfd, msg);   
+      
+        int n = WriteClient(newsockfd, str_append("​​", msg));   
         if(n < 0) // On write fail, wait to reconnect.
         { 
             newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); 

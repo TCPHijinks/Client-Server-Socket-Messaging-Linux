@@ -1,4 +1,4 @@
-/*
+﻿/*
     Required args: filename server_ipaddress portno
     e.g. ./client 127.0.0.1
 
@@ -69,26 +69,40 @@ int main(int argc , char *argv[])
     if(connect(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0)
         error("Connection Failed.");
 
+    // Recieve and display server connection message.
+    bzero(buffer , BUFFER_SIZE);            // Empty buffer.
+    n = read(sockfd , buffer , BUFFER_SIZE);// Read buffer from server.
+    if(n < 0) error("Error on read.");      // Throw error if connection issue.
+    printf("%s",buffer);                    // Print server buffer to terminal.
 
-
+    int liveStreamMode = 0;
     while(servrun == 1)
     {
-        bzero(buffer , BUFFER_SIZE); // Empty.
-        n = read(sockfd , buffer , BUFFER_SIZE); // Read buffer from server.
-        if(n < 0)
-            error("Error on read.");
-        printf("%s",buffer);
+        if(liveStreamMode == 1)
+        {
+            bzero(buffer , BUFFER_SIZE);
+            n = read(sockfd , buffer , BUFFER_SIZE); 
+            if(n < 0) error("Error on read.");
+            printf("%s",buffer);
+        }
+        else
+        {
+            bzero(buffer , BUFFER_SIZE);
+            fgets(buffer , BUFFER_SIZE , stdin); // Get terminal input (wait point).
+                
+            n = write(sockfd , buffer , strlen(buffer));
+            if(n < 0) error("Error on write.");        
+            if(strstr(buffer , "BYE") != NULL)
+                servrun = 0;
 
-        bzero(buffer , BUFFER_SIZE);
-        fgets(buffer , BUFFER_SIZE , stdin); // Pass buffer to server using standard input stream. (wait point)
-              
-        n = write(sockfd , buffer , strlen(buffer)); // Write to server.
-        if(n < 0)
-            error("Error on write.");
+            bzero(buffer , BUFFER_SIZE); // Empty.
+            n = read(sockfd , buffer , BUFFER_SIZE); // Read buffer from server.
+            if(n < 0) error("Error on read.");
+            printf("%s",buffer);
+        }
         
-        if(strstr(buffer , "BYE") != NULL)
-            servrun = 0;
 
+        
        // int i = strncmp("SERV_CLOSE" , buffer , 10); // String compare - check if exit. Check for 'bye' in buffer of length 3.
        // if(i == 0)
        //     break;
