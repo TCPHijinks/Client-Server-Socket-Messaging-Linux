@@ -19,6 +19,10 @@ const int MAX_CLIENTS = 1;
 const int MAX_ID_VAL = 255;
 const int MIN_ID_VAL = 0;
 
+int sockfd , newsockfd; // Socket file discriptors.
+int servrun = 1;        // Server running state.
+int streaming = 0;      // Whether streaming all messages.
+
 #include <stdio.h>  // Standard input output - printf, scanf, etc.
 #include <stdlib.h> // Contains var types, macros and some general functions (e.g atoi).
 #include <string.h> // Contains string functionality, specifically string comparing.
@@ -28,21 +32,40 @@ const int MIN_ID_VAL = 0;
 #include <netinet/in.h> // Contain consts and structs needed for internet domain addresses.
 #include <signal.h>
 
-// Outputs error to terminal and exits program.
-void error(const char *msg)
+void StopServer()
 {
-    perror(msg); 
+    close(newsockfd);
+    close(sockfd);
     exit(1);
 }
-/*
-static volatile sig_atomic_t servrun = 1;
-// Stops server.
-static void sig_handler(int _) 
+
+void ExitState()
 {
-    (void)_;
-    servrun = 0;
+    if(streaming == 1)
+        streaming = 0;    
+    else
+        StopServer();
 }
-*/
+
+// Outputs error to terminal and exits program.
+void Error(const char *msg)
+{
+    perror(msg); 
+    StopServer();
+}
+
+
+/* Signal Handler for SIGINT */
+void sigintHandler(int sig_num) 
+{ 
+    signal(SIGINT, sigintHandler);       
+    fflush(stdout); 
+    fflush(stdin);
+    StopServer();
+} 
+
+
+
 // Append str2 to end of str1.
 char * str_append(char* str1, char* str2) 
 {
@@ -358,7 +381,7 @@ char* Channels()
         t_msg = replace_str(t_msg, "444", ToCharArray(allChans[i_id].totalMsgs - allChans[i_id].curMsgReadPos));
         strcpy(msg, str_append(msg, t_msg)); // Append channel info to msg buffer.    
     }    
-    return str_append(msg, "\n");
+    return msg;
 }
 
 
@@ -456,37 +479,27 @@ char* NextAll()
 //
 void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
 {
+    streaming = 1;
     char* newBuffer = calloc(BUFFER_SIZE, sizeof(char));
-
-    if(strlen(buffer) >= 12) // iF Included an ID in cmd, construct as Next ID cmd.
+    
+    if(strlen(buffer) >= 12) // If included an chan ID in cmd, construct as Next ID cmd.
         strcpy(newBuffer, replace_str(buffer, "LIVESTREAM", "NEXT"));
-    while(1)
+    while(streaming == 1)
     {
         if(strlen(newBuffer) > 0)
         {
             char* msg = Next(newBuffer);
             if(strlen(msg) > 0)            
                 WriteClient(newsockfd, msg); 
-            else
-            {
-                break;
-            }
-            
         }
         else
         {
             char* msg = NextAll();
             if(strlen(msg) > 0)            
-                WriteClient(newsockfd, msg);   
-            else
-            {
-                break;
-            }
-                                
+                WriteClient(newsockfd, msg); 
         }
-        
-       
     }
+    return;
 }
 
 
@@ -505,7 +518,7 @@ void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
 int main(int argc, char * argv[])
 {
     //  signal(SIGINT, sig_handler);
-    int sockfd , newsockfd, portno, n;
+    int portno, n;
     char buffer[BUFFER_SIZE]; 
 
     struct sockaddr_in serv_addr, cli_addr;
@@ -513,8 +526,8 @@ int main(int argc, char * argv[])
     
     bzero((char *) &serv_addr , sizeof(serv_addr)); // Clear any data in reference (make sure serv_addr empty).
     sockfd = socket(AF_INET, SOCK_STREAM, 0);       // IPv4, TCP, default to TCP.
-    if(sockfd < 0) error("Error opening socket.\n");  // Failed.
-       
+    
+    if(sockfd < 0) Error("Failed to open requested socket!\n");
     if(argc < 2) portno = 12345; // Default port if not specified.
     else portno = atoi(argv[1]); // Custom port number.
 
@@ -522,45 +535,37 @@ int main(int argc, char * argv[])
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     serv_addr.sin_port = htons(portno); 
 
-
-    
-    if(bind(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0) // Assign socket address to memory.   
-        error("Binding failed.\n");
-    
-    listen(sockfd , MAX_CLIENTS); // Start passively listening using given socket.
-    clilen = sizeof(cli_addr);    // Set client address memory size.
-
-    newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); // Wait until accept client connection.
-    if(newsockfd < 0) error("Error on Accept.\n"); // Failed.
   
-    // Channel server setup.
-    allChans = calloc(255, sizeof(struct Channel));    
-    for(int i = 0; i < 255; i++)
-    {
+    if(bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) 
+        Error("Failed to bind socket address to memory!\n");
+    
+    listen(sockfd , MAX_CLIENTS); // Listen on socket passively.
+    clilen = sizeof(cli_addr);    
+
+    newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); // Accept client connection (waits until complete).
+    if(newsockfd < 0) 
+        Error("Client failed to connect to server. Something is wrong!\n"); 
+  
+ 
+    allChans = calloc(255, sizeof(struct Channel)); // Create all channels.   
+    for(int i = 0; i < 255; i++) {                  // Populate all channels with default values.
         strcpy(allChans[i].id, ToCharArray(i));
         allChans[i].curMsgReadPos = 0;
         allChans[i].totalMsgs = 0;
         allChans[i].curSubPos = 0;
-    }
-   
+    }   
 
-    // Setup.    
+    // Client setup & initialize first connection.
     client.curChanPos = 0;
-    strcpy(client.id, "1") ; 
+    strcpy(client.id, "1"); 
     WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
     
-    while(1 == 1)
+    while(servrun == 1)
     {
         bzero(buffer , BUFFER_SIZE); // Clear buffer.
         n = read(newsockfd , buffer , BUFFER_SIZE); // Wait point, wait for client to write.
-        printf("HERE");
-        if(strstr(buffer, "^C"))
-        {
-            bzero(buffer , BUFFER_SIZE); // Clear buffer.
-            strcpy(buffer, " ");
-        }
-        if(n < 0) // On read fail, wait to reconnect.
-        {
+        
+        if(n < 0){ // On read fail, wait to reconnect.        
             newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen);
             WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
         }
@@ -581,10 +586,13 @@ int main(int argc, char * argv[])
                 strcpy(msg , Next(buffer));
             else
                 strcpy(msg , NextAll());
-        else if(strstr(buffer , "LIVESTREAM") != NULL)  
-            LiveStream(newsockfd, buffer);
         else
             strcpy(msg , "");
+        if(strstr(buffer, "LIVESTREAM") != NULL)  
+            LiveStream(newsockfd, buffer);
+        if(strstr(buffer , "[+Hide-] EXEC EXIT SERVER") != NULL)
+            StopServer();
+        
         
                   
       

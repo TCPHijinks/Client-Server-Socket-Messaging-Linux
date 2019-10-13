@@ -7,6 +7,7 @@
     argv[2] portno
 
 */
+int sockfd;
 
 #define BUFFER_SIZE 2040
 
@@ -26,22 +27,40 @@ void error(const char *msg)
     exit(0);
 }
 int servrun = 1;
-/*
-static volatile sig_atomic_t servrun = 1;
-static void sig_handler(int _)
-{
-    (void)_;
-    servrun = 0;
-}
-*/
+/* Signal Handler for SIGINT */
+void sigintHandler(int sig_num) 
+{ 
+    /* Reset handler to catch SIGINT next time. 
+       Refer http://en.cppreference.com/w/c/program/signal */
+    signal(SIGINT, sigintHandler);    
+    write(sockfd , "//[+Hide-] EXEC EXIT SERVER" , strlen("[+Hide-] EXEC EXIT SERVER"));
+    printf("\n");
+    fflush(stdout); 
+    fflush(stdin); 
+} 
+ 
 
+// In str, replace first instance of 'old' string with 'new' one.
+char * replace_str(char *str, char *old, char *new)
+{
+  static char buff[4096];
+  char *p;
+
+  if(!(p = strstr(str, old))) 
+    return str;
+   
+  strncpy(buff, str, p-str); 
+  buff[p-str] = '\0';
+  sprintf(buff+(p-str), "%s%s", new, p+strlen(old));
+  return buff;
+}
 
 
 int main(int argc , char *argv[])
 {
- //   signal(SIGINT, sig_handler);
+    signal(SIGINT, sigintHandler); 
 
-    int sockfd , portno, n;
+    int portno, n;
     struct sockaddr_in serv_addr; // Socket address.
     struct hostent *server;
     
@@ -81,7 +100,7 @@ int main(int argc , char *argv[])
     {
         bzero(buffer , BUFFER_SIZE);
         fgets(buffer , BUFFER_SIZE , stdin); // Get terminal input (wait point).
-            
+        strcpy(buffer, replace_str(buffer, "[+Hide-] EXEC EXIT SERVER", "N/A")); // Temp, prevent client closing server. 
         n = write(sockfd , buffer , strlen(buffer));
         if(n < 0) error("Error on write.");        
         if(strstr(buffer , "BYE") != NULL)
