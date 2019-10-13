@@ -34,7 +34,7 @@ void error(const char *msg)
     perror(msg); 
     exit(1);
 }
-
+/*
 static volatile sig_atomic_t servrun = 1;
 // Stops server.
 static void sig_handler(int _) 
@@ -42,7 +42,7 @@ static void sig_handler(int _)
     (void)_;
     servrun = 0;
 }
-
+*/
 // Append str2 to end of str1.
 char * str_append(char* str1, char* str2) 
 {
@@ -276,10 +276,10 @@ char* Sub(char buffer[BUFFER_SIZE])
     char* id = GetIdFromBuffer(buffer, 3, 4);
 
     if(ValidID(id) < 0) // Return if invalid id.
-        return replace_str("Invalid channel: xxx\n","xxx",id);
+        return replace_str("Invalid channel: xxx.\n","xxx",id);
 
     if(GetClientSubIndex(id) >= 0)
-        return replace_str("Already subscribed to channel xxx\n.","xxx",id);
+        return replace_str("Already subscribed to channel xxx.\n","xxx",id);
     
     
     int i_id = atoi(id);
@@ -328,7 +328,7 @@ char* Send(char buffer[BUFFER_SIZE])
     } 
 
     allChans[i_id].totalMsgs++; // Increase total messages sent.
-    return "​​";  // Return nothing (FIX so actually nothing).
+    return "";
 }
 
 
@@ -344,14 +344,14 @@ char* Send(char buffer[BUFFER_SIZE])
 char* Channels()
 {
     if(client.curChanPos <= 0)    
-        return "​"; // TO DO: FIX SO NOT HAVE TO PRINT ANYTHING FOR SERVER TO WORK.s    
+        return "";
         
     char *msg = calloc(BUFFER_SIZE , sizeof(char)); 
     strcpy(msg, "Channel Subscriptions\n"); 
     for(int i = 0; i < client.curChanPos; i++)
     {
         int i_id = atoi(client.channels[i].id); // Subbed channel[i] id as int.
-        char* t_msg = "Channel: 111\tTotal Messages: 222\tRead: 333\tUnread 444"; 
+        char* t_msg = "Channel: 111\tTotal Messages: 222\tRead: 333\tUnread 444\n"; 
         t_msg = replace_str(t_msg, "111", allChans[i_id].id); 
         t_msg = replace_str(t_msg, "222", ToCharArray(allChans[i_id].totalMsgs));
         t_msg = replace_str(t_msg, "333", ToCharArray(allChans[i_id].curMsgReadPos - allChans[i_id].curSubPos));
@@ -458,7 +458,11 @@ void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
 {
     while(1)
     {
-        WriteClient(newsockfd, buffer);
+        char* msg = NextAll();
+        if(strlen(msg) > 0)
+        {
+            WriteClient(newsockfd, msg);
+        }            
     }
 }
 
@@ -486,12 +490,10 @@ int main(int argc, char * argv[])
     
     bzero((char *) &serv_addr , sizeof(serv_addr)); // Clear any data in reference (make sure serv_addr empty).
     sockfd = socket(AF_INET, SOCK_STREAM, 0);       // IPv4, TCP, default to TCP.
-    if(sockfd < 0) error("Error opening socket.");  // Failed.
+    if(sockfd < 0) error("Error opening socket.\n");  // Failed.
        
-    if(argc < 2) // Default to port 12345 if no port arg given.
-        portno = 12345;
-    else
-        portno = atoi(argv[1]); 
+    if(argc < 2) portno = 12345; // Default port if not specified.
+    else portno = atoi(argv[1]); // Custom port number.
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
@@ -500,7 +502,7 @@ int main(int argc, char * argv[])
 
     
     if(bind(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0) // Assign socket address to memory.   
-        error("Binding failed.");
+        error("Binding failed.\n");
     
     listen(sockfd , MAX_CLIENTS); // Start passively listening using given socket.
     clilen = sizeof(cli_addr);    // Set client address memory size.
@@ -524,10 +526,16 @@ int main(int argc, char * argv[])
     strcpy(client.id, "1") ; 
     WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
     
-    while(servrun)
+    while(1 == 1)
     {
         bzero(buffer , BUFFER_SIZE); // Clear buffer.
         n = read(newsockfd , buffer , BUFFER_SIZE); // Wait point, wait for client to write.
+        printf("HERE");
+        if(strstr(buffer, "^C"))
+        {
+            bzero(buffer , BUFFER_SIZE); // Clear buffer.
+            strcpy(buffer, " ");
+        }
         if(n < 0) // On read fail, wait to reconnect.
         {
             newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen);
@@ -550,12 +558,14 @@ int main(int argc, char * argv[])
                 strcpy(msg , Next(buffer));
             else
                 strcpy(msg , NextAll());
+        else if(strstr(buffer , "LIVESTREAM") != NULL)  
+            LiveStream(newsockfd, buffer);
         else
-            strcpy(msg , "​​​");
+            strcpy(msg , "");
         
                   
       
-        int n = WriteClient(newsockfd, str_append("​​", msg));   
+        int n = WriteClient(newsockfd, str_append("​", msg));   
         if(n < 0) // On write fail, wait to reconnect.
         { 
             newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); 

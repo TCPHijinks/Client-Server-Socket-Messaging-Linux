@@ -6,7 +6,7 @@
     argv[1] server_ipaddress
     argv[2] portno
 
- */
+*/
 
 #define BUFFER_SIZE 2040
 
@@ -25,14 +25,15 @@ void error(const char *msg)
     perror(msg); // Output error number and message.
     exit(0);
 }
-
+int servrun = 1;
+/*
 static volatile sig_atomic_t servrun = 1;
 static void sig_handler(int _)
 {
     (void)_;
     servrun = 0;
 }
-
+*/
 
 
 
@@ -75,37 +76,21 @@ int main(int argc , char *argv[])
     if(n < 0) error("Error on read.");      // Throw error if connection issue.
     printf("%s",buffer);                    // Print server buffer to terminal.
 
-    int liveStreamMode = 0;
+    
     while(servrun == 1)
     {
-        if(liveStreamMode == 1)
-        {
-            bzero(buffer , BUFFER_SIZE);
-            n = read(sockfd , buffer , BUFFER_SIZE); 
-            if(n < 0) error("Error on read.");
-            printf("%s",buffer);
-        }
-        else
-        {
-            bzero(buffer , BUFFER_SIZE);
-            fgets(buffer , BUFFER_SIZE , stdin); // Get terminal input (wait point).
-                
-            n = write(sockfd , buffer , strlen(buffer));
-            if(n < 0) error("Error on write.");        
-            if(strstr(buffer , "BYE") != NULL)
-                servrun = 0;
+        bzero(buffer , BUFFER_SIZE);
+        fgets(buffer , BUFFER_SIZE , stdin); // Get terminal input (wait point).
+            
+        n = write(sockfd , buffer , strlen(buffer));
+        if(n < 0) error("Error on write.");        
+        if(strstr(buffer , "BYE") != NULL)
+            servrun = 0;
 
-            bzero(buffer , BUFFER_SIZE); // Empty.
-            n = read(sockfd , buffer , BUFFER_SIZE); // Read buffer from server.
-            if(n < 0) error("Error on read.");
-            printf("%s",buffer);
-        }
-        
-
-        
-       // int i = strncmp("SERV_CLOSE" , buffer , 10); // String compare - check if exit. Check for 'bye' in buffer of length 3.
-       // if(i == 0)
-       //     break;
+        bzero(buffer , BUFFER_SIZE); // Empty.
+        n = read(sockfd , buffer , BUFFER_SIZE); // Read buffer from server.
+        if(n < 0) error("Error on read.");
+        printf("%s",buffer);
     }
     
     close(sockfd);
