@@ -266,7 +266,7 @@ char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified chan
     if(i < 0) // Not subscribed to this chan id.
         return replace_str("Not subscribed to channel: xxx.\n","xxx",id);
 
-    for(;i < client.curChanPos; i++)
+    for(;i < client.curChanPos; i++) // Overwrite unsubbed chan and decrement index positions of chans after it.
     {
         strcpy(client.channels[i].id , client.channels[i+1].id);
         client.channels[i].curMsgReadPos = client.channels[i+1].curMsgReadPos;
@@ -289,7 +289,7 @@ char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified chan
     OUTPUT:: Confirmation of adding channel to client subs.
 */
 char* Sub(char buffer[BUFFER_SIZE])
-{ // TO DO: Change Client Channels * to a "char* chans[3]" for efficency, also set it so starting read pos after last sent msg when sub.
+{ 
     char* id = GetIdFromBuffer(buffer, 3, 4);
 
     if(ValidID(id) < 0) // Return if invalid id.
@@ -302,12 +302,17 @@ char* Sub(char buffer[BUFFER_SIZE])
     int i_id = atoi(id);
 
     // Set so when sub, start reading after latest msg.
-    allChans[i_id].curSubPos = allChans[i_id].totalMsgs;
-    allChans[i_id].curMsgReadPos = allChans[i_id].totalMsgs;
+    //allChans[i_id].curSubPos = allChans[i_id].totalMsgs;
+    //allChans[i_id].curMsgReadPos = allChans[i_id].totalMsgs;
     
-    // Add server info to client sub list (replace with char* arr[3] eventually).
+    // Add server info to client sub list.
     strcpy(client.channels[client.curChanPos].id, allChans[i_id].id);
-    client.curChanPos++;    
+
+    // Client start reading after last msg before subscribed.
+    client.channels[client.curChanPos].curSubPos = allChans[i_id].totalMsgs;
+    client.channels[client.curChanPos].curMsgReadPos = allChans[i_id].totalMsgs;
+    client.curChanPos++; // Increase client subscriptions count.
+
     return replace_str("Subscribed to channel xxx.\n","xxx",id);
 }
 
@@ -367,12 +372,13 @@ char* Channels()
     strcpy(msg, "Channel Subscriptions\n"); 
     for(int i = 0; i < client.curChanPos; i++)
     {
-        int i_id = atoi(client.channels[i].id); // Subbed channel[i] id as int.
+        int i_id = atoi(client.channels[i].id); // Get target channel id from sub list.
+        int c_index = GetClientSubIndex(client.channels[i].id); // Get index of channel in client subs.
         char* t_msg = "Channel: 111\tTotal Messages: 222\tRead: 333\tUnread 444\n"; 
         t_msg = replace_str(t_msg, "111", allChans[i_id].id); 
-        t_msg = replace_str(t_msg, "222", ToCharArray(allChans[i_id].totalMsgs));
-        t_msg = replace_str(t_msg, "333", ToCharArray(allChans[i_id].curMsgReadPos - allChans[i_id].curSubPos));
-        t_msg = replace_str(t_msg, "444", ToCharArray(allChans[i_id].totalMsgs - allChans[i_id].curMsgReadPos));
+        t_msg = replace_str(t_msg, "222", ToCharArray(allChans[ i_id].totalMsgs));
+        t_msg = replace_str(t_msg, "333", ToCharArray(client.channels[c_index].curMsgReadPos - client.channels[c_index].curSubPos));
+        t_msg = replace_str(t_msg, "444", ToCharArray(allChans[i_id].totalMsgs - client.channels[c_index].curMsgReadPos));
         strcpy(msg, str_append(msg, t_msg)); // Append channel info to msg buffer.    
     }    
     return msg;
@@ -419,10 +425,10 @@ char* Next(char* buffer)
     if(GetClientSubIndex(id) < 0)
         return replace_str("Not subscribed to channel XXX\n", "XXX", id);
     
-    if(allChans[atoi(id)].totalMsgs - allChans[atoi(id)].curMsgReadPos > 0)
+    if(allChans[atoi(id)].totalMsgs - client.channels[GetClientSubIndex(id)].curMsgReadPos > 0) 
     {
-        allChans[atoi(id)].curMsgReadPos++; 
-        return allChans[atoi(id)].msgs[allChans[atoi(id)].curMsgReadPos - 1].msg;
+        client.channels[GetClientSubIndex(id)].curMsgReadPos++; 
+        return allChans[atoi(id)].msgs[client.channels[GetClientSubIndex(id)].curMsgReadPos - 1].msg;
     }
     return "";
 }
@@ -447,11 +453,12 @@ char* NextAll()
    
     for(int i = 0; i < client.curChanPos; i++) // Loop through subscriptions.
     {
-        if(allChans[atoi(client.channels[i].id)].curMsgReadPos < allChans[atoi(client.channels[i].id)].totalMsgs)
+        if(client.channels[i].curMsgReadPos < allChans[atoi(client.channels[i].id)].totalMsgs)
         {
-            int readPos = allChans[atoi(client.channels[i].id)].curMsgReadPos;
+            int readPos = client.channels[i].curMsgReadPos;
             if(allChans[atoi(client.channels[i].id)].msgs[readPos].readPriority < nextMsgRdPriority) // Check if msg higher priority.
             {
+                printf("HERE\n");
                 nextChanID = atoi(client.channels[i].id);
                 nextMsgRdPriority = allChans[atoi(client.channels[i].id)].msgs[readPos].readPriority;   
             }           
@@ -462,8 +469,9 @@ char* NextAll()
         return "";
     
     curMsgReadPriority = nextMsgRdPriority + 1;
-    allChans[nextChanID].curMsgReadPos++;
-    return str_append(str_append(ToCharArray(nextChanID),":"), allChans[nextChanID].msgs[allChans[nextChanID].curMsgReadPos-1].msg);
+    client.channels[GetClientSubIndex(allChans[nextChanID].id)].curMsgReadPos++;
+    return str_append(str_append(ToCharArray(nextChanID),":"), 
+        allChans[nextChanID].msgs[client.channels[GetClientSubIndex(allChans[nextChanID].id)].curMsgReadPos-1].msg);
 }
 
 
