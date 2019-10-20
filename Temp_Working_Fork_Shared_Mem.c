@@ -1,6 +1,3 @@
-/*
-    Working basic fork with shared memory.
-*/
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
@@ -9,91 +6,73 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#define MAX 5
 #define SHMSZ     27
 
+int shmid;
+key_t cliForks_key;
+//char *shm;
+int *shm_cliForks = 0;
 
 
 
 void ClientConnectionHandle()
 {
-  int shmid;
-  key_t key;
-  char *shm, *s;
+    cliForks_key = 5678; // Get shared memory segment via its name.
 
-
-  key = 5678; // Get shared memory segment via its name.
-
-  if ((shmid = shmget(key, SHMSZ, 0666)) < 0) { // Locate segment in mem.
+    if ((shmid = shmget(cliForks_key, SHMSZ, 0666)) < 0) { // Locate segment in mem.
       perror("shmget");
       exit(1);
-  }
-
-  if ((shm = shmat(shmid, NULL, 0)) == (char *) -1) { // Attach to local data space.
-      perror("shmat");
-      exit(1);
-  }
-
-
-  for (s = shm; *s != 0; s++) // Read what parent put into mem.
-      putchar(*s);
-  putchar('\n');
-
-  *shm = '*'; // Change first char of segment to '*' to show that read segment.
-
-
-
+    }
+    shm_cliForks = (int*) shmat(shmid, NULL, 0); // Assign to shared memory.  
+    *shm_cliForks += 2;
+    printf("%d [son] has incremented shared mem to [%d].\n",getpid(),*shm_cliForks);
 }
 
 
 
-int main(int argc, char *argv[]){
-  
-  char c;
-  int shmid;
-  key_t key;
-  char *shm, *s;
 
-  key = 5678; // Name shared memory.
 
-  if ((shmid = shmget(key, SHMSZ, IPC_CREAT | 0666)) < 0) { // Create mem segment.
-      perror("shmget");
-      exit(1);
-  }
 
-  if ((shm = shmat(shmid, NULL, 0)) == (char *) -1) { // Attach segment to data space.
-      perror("shmat");
-      exit(1);
-  }
+int main() 
+{      
 
-  // Add starting data.
-  s = shm;
-  for (c = 'a'; c <= 'z'; c++)
-      *s++ = c;
-  *s = 0;
+    cliForks_key = 5678; // Name shared memory.
 
-  pid_t pid = fork();
-  if(pid < 0){
-    printf("ERROR, fork failed.");
-  }
-  else if(pid == 0){
-    printf("I am the child with pid %d\n", (int)getpid());
-    ClientConnectionHandle();
-    exit(99); // Can pass any return val, 0 is default for work but doesnt matter
-  }
-  else if(pid > 0){
-    printf("I am the parent with pid %d\n", (int) getpid());
-    printf("I forked a child of pid %d\n", (int) pid);
-    while (*shm != '*')
-        sleep(1);
-    printf("Done waiting on child to edit shared mem.");
-  }
+    if ((shmid = shmget(cliForks_key, SHMSZ, IPC_CREAT | 0666)) < 0) { // Create mem segment.
+        perror("shmget");
+        exit(1);
+    }
 
-  // Only parent reach here because of child exit.
-  int status = 0;
-  pid_t childpid = wait(&status); // Wait for child to end.
-  int childReturnVal = WEXITSTATUS(status); // Get only the return value of child (otherwise has more encoded data).
-  printf("Parent of %d knows that child of %d has exited with value of %d.\n", (int) getpid(), (int) childpid, childReturnVal);
-  
-  
-  return 0;
-}
+    shm_cliForks = (int*) shmat(shmid, NULL, 0); // Attach segment to data space.
+      
+
+
+
+    for(int i=0;i<2;i++) // loop will run n times (n=5) 
+    { 
+        pid_t pid = fork();
+        if(pid < 0){
+            printf("ERROR, fork failed.");
+        }
+        else if(pid == 0){
+            printf("%d::[son] pid %d from [parent] pid %d\n",i,getpid(),getppid()); 
+            ClientConnectionHandle();
+            exit(99); // Can pass any return val, 0 is default for work but doesnt matter
+        }
+
+        // Get child exit code and retrieve Exit Status from returned val.
+        // TODO: Use exit val to determine if child was handling a client connection or not. 
+        //  If handling, decrement number off client handlers so can fork() new handler child.
+        int exit_status = 0;
+        pid_t childpid = wait(&exit_status); 
+        int childReturnVal = WEXITSTATUS(exit_status); 
+        printf("Parent of %d knows that child of %d has exited with value of %d.\n", 
+            (int) getpid(), (int) childpid, childReturnVal);
+    } 
+    for(int i=0;i<2;i++) // loop will run n times (n=5) 
+        wait(NULL); 
+    
+    shmdt(shm_cliForks); // Detach shared mem segment.
+    shmctl(shmid, IPC_RMID, NULL); // Remove from shared mem.
+} 
