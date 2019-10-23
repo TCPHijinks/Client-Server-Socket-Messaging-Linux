@@ -591,19 +591,18 @@ int main(int argc, char * argv[])
 
 
     // Multi-processing.
-    ////////////////////////////////////////////////
-    /*/
+    ////////////////////////////////////////////////   
     cliForks_key = 5678; // Name shared memory.
     if ((shmid = shmget(cliForks_key, SHMSZ, IPC_CREAT | 0666)) < 0) { // Create mem segment.
         perror("shmget");
         exit(1);
     }
     shm_cliForks = (int*) shmat(shmid, NULL, 0); // Attach segment to data space.
-      */
+
     pid_t pid;
 
     // Create client handler forks.
-    for(int i=0;i<6;i++) { 
+    for(int i=0;i<MAX_CLIENTS;i++) { 
         pid = fork();
         if(pid < 0){
             printf("ERROR, fork failed.");
@@ -613,93 +612,89 @@ int main(int argc, char * argv[])
         }            
     }
 
-
+    int id_index = *shm_cliForks - 3;
+    *shm_cliForks += 1;
     
-
     if(pid == 0)
-    {
-        newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); // Accept client connection (waits until complete).
-        if(newsockfd < 0) 
-            Error("Client failed to connect to server. Something is wrong!\n"); 
-        printf("ACCEPTED\n");
-        // Client setup & initialize first connection.
-        client.curChanPos = 0;
-        strcpy(client.id, "1"); 
-        WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
+    {  
+        while(1){ // Keep reconnecting.
+            newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); // Accept client connection (waits until complete).
+            if(newsockfd < 0) 
+                Error("Client failed to connect to server. Something is wrong!\n"); 
             
-        while(1)
-        {
-            bzero(bufferg , BUFFER_SIZE); // Clear buffer.
-            n = read(newsockfd , bufferg , BUFFER_SIZE); // Wait point, wait for client to write.            
-            if(n < 0){ // On read fail, wait to reconnect.        
-                printf("R Error.\n");
-            }
+            // Client setup & initialize first connection.
+            client.curChanPos = 0;
+            strcpy(client.id, ToCharArray(id_index)); 
+            WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
             
-            char* msg;
-            
-            
-            if(strstr(bufferg , "UNSUB ") != NULL)
-                msg = Unsub(bufferg);          
-            else if(strstr(bufferg , "SUB ") != NULL)                
-                msg = Sub(bufferg); 
-            else if(strstr(bufferg , "CHANNELS") != NULL)
-                msg = Channels();
-            else if(strstr(bufferg , "SEND ") != NULL)
-                msg = Send(bufferg);
-            else if(strstr(bufferg , "BYE") != NULL)            
-                Bye(newsockfd);
-            else if(strstr(bufferg , "NEXT") != NULL)  
-                if(strlen(bufferg) >= 6)  
-                    msg = Next(bufferg);
+            while(servrun == 1) // Server running handling.
+            {
+                bzero(bufferg , BUFFER_SIZE); // Clear buffer.
+                n = read(newsockfd , bufferg , BUFFER_SIZE); // Wait point, wait for client to write.            
+                if(n < 0) // Read fail, try recoonect.
+                    break;
+                
+                char* msg;
+                
+                
+                if(strstr(bufferg , "UNSUB ") != NULL)
+                    msg = Unsub(bufferg);          
+                else if(strstr(bufferg , "SUB ") != NULL)                
+                    msg = Sub(bufferg); 
+                else if(strstr(bufferg , "CHANNELS") != NULL)
+                    msg = Channels();
+                else if(strstr(bufferg , "SEND ") != NULL)
+                    msg = Send(bufferg);
+                else if(strstr(bufferg , "BYE") != NULL)   
+                {
+                    Bye(newsockfd);
+                    break;
+                }   
+                else if(strstr(bufferg , "NEXT") != NULL)  
+                    if(strlen(bufferg) >= 6)  
+                        msg = Next(bufferg);
+                    else
+                        msg = NextAll();
                 else
-                    msg = NextAll();
-            else
-                msg =  "";
-            if(strstr(bufferg, "LIVESTREAM") != NULL)  
-                LiveStream(newsockfd, bufferg);
+                    msg =  "";
+                if(strstr(bufferg, "LIVESTREAM") != NULL)  
+                    LiveStream(newsockfd, bufferg);
 
-          
+            
 
-            int n = WriteClient(newsockfd, str_append("​", msg));   
-            if(n < 0) // On write fail, wait to reconnect.
-            { 
-               printf("W Error.\n");
+                int n = WriteClient(newsockfd, str_append("​", msg));   
+                if(n < 0) // Write fail, try reconnect.
+                    break;
             }
-            printf("4\n");
-        }
+        }    
+        close(sockfd);   
+        close(newsockfd);
     }
      ////////////////////////////////////////////////////////
     
 
 
     
-
+    
 
 
     int exit_status = 0;
     pid_t childpid = wait(&exit_status); 
     int childReturnVal = WEXITSTATUS(exit_status); 
 
- //   if(childReturnVal > -1) // If child was handling client, make new ffork available.
- //       *shm_cliForks -= 1;
+  //  if(childReturnVal > -1) // If child was handling client, make new ffork available.
+  //      *shm_cliForks -= 1;
 
 
     printf("Parent of %d knows that child of %d has exited with value of %d.\n", 
         (int) getpid(), (int) childpid, childReturnVal);
 
-    for(int i=0;i<6;i++) // loop will run n times (n=5) 
+    for(int i=0;i<MAX_CLIENTS;i++) // loop will run n times (n=5) 
         wait(NULL); 
 
     // Detach from mem when all stop.
-   // shmdt(shm_cliForks); // Detach shared mem segment.
-   // shmctl(shmid, IPC_RMID, NULL); // Remove from shared mem.
+    shmdt(shm_cliForks); // Detach shared mem segment.
+    shmctl(shmid, IPC_RMID, NULL); // Remove from shared mem.
 
-
-
-
-    
-   
-    close(newsockfd);
-    close(sockfd);    
     return 0;
 }
