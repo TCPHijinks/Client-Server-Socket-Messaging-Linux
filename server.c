@@ -6,24 +6,39 @@
     argv[1] portno (optional)
 
 */
-#define BUFFER_SIZE 2040
-#define DEFAULT_PORT 12345
-const int MAX_CLIENTS = 1;
-const int MAX_ID_VAL = 255;
-const int MIN_ID_VAL = 0;
-
-int sockfd , newsockfd; // Socket file discriptors.
-int servrun = 1;        // Server running state.
-int streaming = 0;      // Whether streaming all messages.
-
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <stdio.h>  // Standard input output - printf, scanf, etc.
 #include <stdlib.h> // Contains var types, macros and some general functions (e.g atoi).
 #include <string.h> // Contains string functionality, specifically string comparing.
+#include <strings.h>
 #include <unistd.h> // Contains read, write and close functions.
 #include <sys/types.h>  // Contain datatypes to do system calls (socket.h, in.h + more).
 #include <sys/socket.h> // Definitions of structures for sockets (e.g. sockaddr struct).
 #include <netinet/in.h> // Contain consts and structs needed for internet domain addresses.
 #include <signal.h>
+
+ int sockfd , newsockfd; // Socket file discriptors.
+    int portno, n;
+
+const int MAX_CLIENTS = 4;
+#define SHMSZ     27
+
+int shmid;
+key_t cliForks_key;
+//char *shm;
+int *shm_cliForks = 0;
+int streaming = 0;
+#define BUFFER_SIZE 2040
+#define DEFAULT_PORT 12345
+const int MAX_ID_VAL = 255;
+const int MIN_ID_VAL = 0;
+int servrun = 1;        // Server running state.
+
+
+
 
 void StopServer()
 {
@@ -291,14 +306,14 @@ char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified chan
 char* Sub(char buffer[BUFFER_SIZE])
 { 
     char* id = GetIdFromBuffer(buffer, 3, 4);
-
+    printf("a\n");
     if(ValidID(id) < 0) // Return if invalid id.
         return replace_str("Invalid channel: xxx.\n","xxx",id);
 
     if(GetClientSubIndex(id) >= 0)
         return replace_str("Already subscribed to channel xxx.\n","xxx",id);
     
-    
+    printf("b\n");
     int i_id = atoi(id);
 
     // Set so when sub, start reading after latest msg.
@@ -307,12 +322,12 @@ char* Sub(char buffer[BUFFER_SIZE])
     
     // Add server info to client sub list.
     strcpy(client.channels[client.curChanPos].id, allChans[i_id].id);
-
+    printf("c\n");
     // Client start reading after last msg before subscribed.
     client.channels[client.curChanPos].curSubPos = allChans[i_id].totalMsgs;
     client.channels[client.curChanPos].curMsgReadPos = allChans[i_id].totalMsgs;
     client.curChanPos++; // Increase client subscriptions count.
-
+    printf("d\n");
     return replace_str("Subscribed to channel xxx.\n","xxx",id);
 }
 
@@ -528,9 +543,6 @@ void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
 
 
 
-
-
-
 /*
     Main logic.
     Sets up server and beings passively listening.
@@ -539,13 +551,12 @@ void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
 */
 int main(int argc, char * argv[])
 {
-    //  signal(SIGINT, sig_handler);
-    int portno, n;
-    char buffer[BUFFER_SIZE]; 
-
+   
     struct sockaddr_in serv_addr, cli_addr;
     socklen_t clilen; // Sock addr size.
-    
+    char bufferg[BUFFER_SIZE];
+  
+
     bzero((char *) &serv_addr , sizeof(serv_addr)); // Clear any data in reference (make sure serv_addr empty).
     sockfd = socket(AF_INET, SOCK_STREAM, 0);       // IPv4, TCP, default to TCP.
     
@@ -564,9 +575,8 @@ int main(int argc, char * argv[])
     listen(sockfd , MAX_CLIENTS); // Listen on socket passively.
     clilen = sizeof(cli_addr);    
 
-    newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); // Accept client connection (waits until complete).
-    if(newsockfd < 0) 
-        Error("Client failed to connect to server. Something is wrong!\n"); 
+
+   
   
  
     allChans = calloc(255, sizeof(struct Channel)); // Create all channels.   
@@ -577,53 +587,118 @@ int main(int argc, char * argv[])
         allChans[i].curSubPos = 0;
     }   
 
-    // Client setup & initialize first connection.
-    client.curChanPos = 0;
-    strcpy(client.id, "1"); 
-    WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
-    
-    while(servrun == 1)
-    {
-        bzero(buffer , BUFFER_SIZE); // Clear buffer.
-        n = read(newsockfd , buffer , BUFFER_SIZE); // Wait point, wait for client to write.
-        
-        if(n < 0){ // On read fail, wait to reconnect.        
-            newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen);
-            WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
-        }
+   
 
-        char* msg;
-        if(strstr(buffer , "UNSUB ") != NULL)
-            strcpy(msg , Unsub(buffer));          
-        else if(strstr(buffer , "SUB ") != NULL)                
-            strcpy(msg , Sub(buffer)); 
-        else if(strstr(buffer , "CHANNELS") != NULL)
-            strcpy(msg, Channels());
-        else if(strstr(buffer , "SEND ") != NULL)
-            strcpy(msg, Send(buffer));
-        else if(strstr(buffer , "BYE") != NULL)            
-            Bye(newsockfd);
-        else if(strstr(buffer , "NEXT") != NULL)  
-            if(strlen(buffer) >= 6)  
-                strcpy(msg , Next(buffer));
+
+    // Multi-processing.
+    ////////////////////////////////////////////////
+    /*/
+    cliForks_key = 5678; // Name shared memory.
+    if ((shmid = shmget(cliForks_key, SHMSZ, IPC_CREAT | 0666)) < 0) { // Create mem segment.
+        perror("shmget");
+        exit(1);
+    }
+    shm_cliForks = (int*) shmat(shmid, NULL, 0); // Attach segment to data space.
+      */
+    pid_t pid;
+
+    // Create client handler forks.
+    for(int i=0;i<6;i++) { 
+        pid = fork();
+        if(pid < 0){
+            printf("ERROR, fork failed.");
+        }
+        else if(pid == 0){            
+            printf("%d::[son] pid %d from [parent] pid %d\n",i,getpid(),getppid()); 
+        }            
+    }
+
+
+    
+
+    if(pid == 0)
+    {
+        newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); // Accept client connection (waits until complete).
+        if(newsockfd < 0) 
+            Error("Client failed to connect to server. Something is wrong!\n"); 
+        printf("ACCEPTED\n");
+        // Client setup & initialize first connection.
+        client.curChanPos = 0;
+        strcpy(client.id, "1"); 
+        WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
+            
+        while(1)
+        {
+            bzero(bufferg , BUFFER_SIZE); // Clear buffer.
+            n = read(newsockfd , bufferg , BUFFER_SIZE); // Wait point, wait for client to write.            
+            if(n < 0){ // On read fail, wait to reconnect.        
+                printf("R Error.\n");
+            }
+            
+            char* msg;
+            
+            
+            if(strstr(bufferg , "UNSUB ") != NULL)
+                msg = Unsub(bufferg);          
+            else if(strstr(bufferg , "SUB ") != NULL)                
+                msg = Sub(bufferg); 
+            else if(strstr(bufferg , "CHANNELS") != NULL)
+                msg = Channels();
+            else if(strstr(bufferg , "SEND ") != NULL)
+                msg = Send(bufferg);
+            else if(strstr(bufferg , "BYE") != NULL)            
+                Bye(newsockfd);
+            else if(strstr(bufferg , "NEXT") != NULL)  
+                if(strlen(bufferg) >= 6)  
+                    msg = Next(bufferg);
+                else
+                    msg = NextAll();
             else
-                strcpy(msg , NextAll());
-        else
-            strcpy(msg , "");
-        if(strstr(buffer, "LIVESTREAM") != NULL)  
-            LiveStream(newsockfd, buffer);
-        
-        
-        
-                  
-      
-        int n = WriteClient(newsockfd, str_append("​", msg));   
-        if(n < 0) // On write fail, wait to reconnect.
-        { 
-            newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); 
-            WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
+                msg =  "";
+            if(strstr(bufferg, "LIVESTREAM") != NULL)  
+                LiveStream(newsockfd, bufferg);
+
+          
+
+            int n = WriteClient(newsockfd, str_append("​", msg));   
+            if(n < 0) // On write fail, wait to reconnect.
+            { 
+               printf("W Error.\n");
+            }
+            printf("4\n");
         }
     }
+     ////////////////////////////////////////////////////////
+    
+
+
+    
+
+
+
+    int exit_status = 0;
+    pid_t childpid = wait(&exit_status); 
+    int childReturnVal = WEXITSTATUS(exit_status); 
+
+ //   if(childReturnVal > -1) // If child was handling client, make new ffork available.
+ //       *shm_cliForks -= 1;
+
+
+    printf("Parent of %d knows that child of %d has exited with value of %d.\n", 
+        (int) getpid(), (int) childpid, childReturnVal);
+
+    for(int i=0;i<6;i++) // loop will run n times (n=5) 
+        wait(NULL); 
+
+    // Detach from mem when all stop.
+   // shmdt(shm_cliForks); // Detach shared mem segment.
+   // shmctl(shmid, IPC_RMID, NULL); // Remove from shared mem.
+
+
+
+
+    
+   
     close(newsockfd);
     close(sockfd);    
     return 0;
