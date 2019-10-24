@@ -138,7 +138,7 @@ int WriteClient(int newsockfd, char* buffer)
 struct Message
 {
     long long timeSent;
-    char *msg; // Message containing 1024 characters.
+    char msg[1024]; // Message containing 1024 characters.
 };
 
 struct Channel
@@ -385,8 +385,8 @@ char* Send(char buffer[BUFFER_SIZE])
     printf("s2\n");
     char* msg = GetMsgFromBuffer(buffer, i_id);
     CriticalChanAccess(i_id, 0);
-    allChans[i_id].msgs[allChans[i_id].totalMsgs].msg = calloc(MSG_MAX_LEN, sizeof(char));
-    allChans[i_id].msgs[allChans[i_id].totalMsgs].msg = msg;  // Add message to channel.
+    //allChans[i_id].msgs[allChans[i_id].totalMsgs].msg = calloc(MSG_MAX_LEN, sizeof(char));
+    strcpy(allChans[i_id].msgs[allChans[i_id].totalMsgs].msg, msg);  // Add message to channel.
     printf("s3\n");
 
     // Set msg priority to YYYYMMDDHHmmSS to determine when it was posted.
@@ -488,13 +488,20 @@ char* Next(char* buffer)
     
     if(GetClientSubIndex(id) < 0)
         return replace_str("Not subscribed to channel XXX\n", "XXX", id);
-    CriticalChanAccess(atoi(id), 1); // Wait until can safely read.
+    CriticalChanAccess(atoi(id), 0); // Wait until can safely read.
     if(allChans[atoi(id)].totalMsgs - client.channels[GetClientSubIndex(id)].curMsgReadPos > 0) 
     {
+
+      
+        printf("Made it here %ld\n", strlen(allChans[atoi(id)].msgs[client.channels[GetClientSubIndex(id)].curMsgReadPos].msg));
         client.channels[GetClientSubIndex(id)].curMsgReadPos++; 
-        return allChans[atoi(id)].msgs[client.channels[GetClientSubIndex(id)].curMsgReadPos - 1].msg;
+        sem_post(&chanMutex[atoi(id)]);
+        char* m = allChans[atoi(id)].msgs[client.channels[GetClientSubIndex(id)].curMsgReadPos - 1].msg;
+        
+        return m;
     }
-    return "";
+    sem_post(&chanMutex[atoi(id)]);
+    return "PP";
 }
 
 
@@ -519,15 +526,13 @@ char* NextAll()
     {
         if(client.channels[i].curMsgReadPos < allChans[atoi(client.channels[i].id)].totalMsgs)
         {
-            printf("uuuuu\n");
             int readPos = client.channels[i].curMsgReadPos;
             if(allChans[atoll(client.channels[i].id)].msgs[readPos].timeSent < nextMsgSentTime) // Check if msg higher priority.
-            {
-                printf("here 1\n");
-                CriticalChanAccess(atoi(allChans[atoi(client.channels[i].id)].id), 1);
-                printf("HERE\n");
+            {             
+                CriticalChanAccess(atoi(allChans[atoi(client.channels[i].id)].id), 0);                
                 nextChanID = atoi(client.channels[i].id);
                 nextMsgSentTime = allChans[atoll(client.channels[i].id)].msgs[readPos].timeSent;   
+                sem_post(&chanMutex[atoi(allChans[atoi(client.channels[i].id)].id)]);
             }           
         } 
     }
@@ -628,7 +633,7 @@ int main(int argc, char * argv[])
 
 
     // Shared memory (Client ID).
-    if ((shmid[0] = shmget(IPC_PRIVATE, SHMSZ, IPC_CREAT | 0666)) < 0) { // Create mem segment.
+    if ((shmid[0] = shmget(IPC_PRIVATE, sizeof(int) * MAX_CLIENTS, IPC_CREAT | 0666)) < 0) { // Create mem segment.
         perror("shmget");
         exit(1);
     }
