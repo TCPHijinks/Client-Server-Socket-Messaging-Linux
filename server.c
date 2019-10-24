@@ -26,18 +26,17 @@ int portno, n;
 
 const int MAX_CLIENTS = 4;
 
-#define SHMSZ     27
 
 
 
 int streaming = 0;
 #define BUFFER_SIZE 2040
 #define DEFAULT_PORT 12345
-const int MAX_ID_VAL = 255;
+const int MAX_ID_VAL = 256;
 const int MIN_ID_VAL = 0;
 int servrun = 1;        // Server running state.
 
-const int MSG_MAX_LEN = 1024;
+
 
 
 void StopServer()
@@ -143,19 +142,19 @@ struct Message
 
 struct Channel
 {
-    char* id;         // Identifier of channel. Values of 0-255.
+    char id[3];         // Identifier of channel. Values of 0-255.
     int curSubPos;      // Point from where you can read future msgs.
     int curMsgReadPos;  // Cur point of reading.
     int totalMsgs;      // Total msgs in channel (readable and not).
-    struct Message msgs[255];
+    struct Message msgs[256];
 };
 
 
 struct Client
 {
-    char* id;
+    char id[3];
     int curChanPos; // Number of channel subscriptions.
-    struct Channel channels[255];
+    struct Channel channels[256];
 } client;
 ////////////////////////////////////////////////////////////////////////////
 
@@ -346,8 +345,8 @@ char* Sub(char buffer[BUFFER_SIZE])
     
     // Add server info to client sub list.
     printf("c1\n");
-    client.channels[client.curChanPos].id = calloc(3, sizeof(char));
-    client.channels[client.curChanPos].id = allChans[i_id].id;
+    //client.channels[client.curChanPos].id = calloc(3, sizeof(char));
+    strcpy(client.channels[client.curChanPos].id, allChans[i_id].id);
     printf("c2\n");
     // Client start reading after last msg before subscribed.
     client.channels[client.curChanPos].curSubPos = allChans[i_id].totalMsgs;
@@ -640,13 +639,13 @@ int main(int argc, char * argv[])
     shm_cliForks = shmat(shmid[0], NULL, 0); // Attach segment to data space.
 
     // Shared memory (Channels).
-    if ((shmid[1] = shmget(IPC_PRIVATE, sizeof(struct Channel) * 255, IPC_CREAT | IPC_EXCL | 0666)) < 0) { // Create mem segment.
+    if ((shmid[1] = shmget(IPC_PRIVATE, sizeof(struct Channel) * 256, IPC_CREAT | IPC_EXCL | 0666)) < 0) { // Create mem segment.
         perror("shmget");
         StopServer();
     }
     allChans = shmat(shmid[1], NULL, 0); // Attach segment to data space.     
-    for(int i = 0; i < 255; i++) { // Populate channels with default values.
-        allChans[i].id = calloc(3, sizeof(char));
+    for(int i = 0; i < 256; i++) { // Populate channels with default values.
+        //allChans[i].id = calloc(3, sizeof(char));
         strcpy(allChans[i].id, ToCharArray(i));
         allChans[i].curMsgReadPos = 0;
         allChans[i].totalMsgs = 0;
@@ -654,12 +653,12 @@ int main(int argc, char * argv[])
     }   
 
     // Shared memory (Mutex id for each channel).
-    if ((shmid[2] = shmget(IPC_PRIVATE, sizeof(sem_t) * 255, IPC_CREAT | 0666)) < 0) { // Create mem segment.
+    if ((shmid[2] = shmget(IPC_PRIVATE, sizeof(sem_t) * 256, IPC_CREAT | 0666)) < 0) { // Create mem segment.
         perror("shmget");
         StopServer();
     }
     chanMutex = shmat(shmid[2], NULL, 0); // Attach segment to data space.
-    for(int i = 0; i < 255; i++) { // Init all mutex locks.
+    for(int i = 0; i < 256; i++) { // Init all mutex locks.
         sem_init(&chanMutex[i], 1, 1);
     }
 
@@ -689,7 +688,7 @@ int main(int argc, char * argv[])
             
             // Client setup & initialize first connection.
             client.curChanPos = 0;
-            client.id = calloc(3, sizeof(char));
+            //client.id = calloc(3, sizeof(char));
             strcpy(client.id, ToCharArray(id_index)); 
             WriteClient(newsockfd, replace_str("Welcome! Your client ID is xxx.\n","xxx",client.id));
             
