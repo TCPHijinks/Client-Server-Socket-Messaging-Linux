@@ -20,13 +20,14 @@
 #include <netinet/in.h> // Contain consts and structs needed for internet domain addresses.
 #include <signal.h>
 #include <semaphore.h> 
+#include <time.h>
 int sockfd , newsockfd; // Socket file discriptors.
 int portno, n;
 
 const int MAX_CLIENTS = 4;
 
 #define SHMSZ     27
-#define SHM_C_SZ     67111920
+
 
 
 int streaming = 0;
@@ -133,10 +134,10 @@ int WriteClient(int newsockfd, char* buffer)
 
 
 ////////////////////////////////////////////////////////////////////////////
-long curMsgReadPriority = 0;
+
 struct Message
 {
-    long readPriority;
+    long long timeSent;
     char *msg; // Message containing 1024 characters.
 };
 
@@ -161,7 +162,6 @@ struct Client
 
 
 int shmid[3];
-key_t cliForks_key, allChans_key, chanMutex_key;
 int *shm_cliForks = 0;    // Number of client forks used to assign client ids (Shared Mem).
 struct Channel *allChans; // Global channels (Shared Mem).
 sem_t *chanMutex;  // Channel mutex locks (Shared Mem).
@@ -279,7 +279,9 @@ void CriticalChanAccess(int chanID, int reading)
 {
     if(reading) // Read if not writing & allow immediate access to others.    ///////////////////////////////////////////////////////////
     {
+        printf("WAIT\n");
         sem_wait(&chanMutex[chanID]);
+        printf("DONE\n");
         sem_post(&chanMutex[chanID]);
     }
     else // Wait until available to write.
@@ -382,19 +384,29 @@ char* Send(char buffer[BUFFER_SIZE])
     int i_id = atoi(id);
     printf("s2\n");
     char* msg = GetMsgFromBuffer(buffer, i_id);
-    //CriticalChanAccess(i_id, 0);
+    CriticalChanAccess(i_id, 0);
     allChans[i_id].msgs[allChans[i_id].totalMsgs].msg = calloc(MSG_MAX_LEN, sizeof(char));
     allChans[i_id].msgs[allChans[i_id].totalMsgs].msg = msg;  // Add message to channel.
     printf("s3\n");
+
+    // Set msg priority to YYYYMMDDHHmmSS to determine when it was posted.
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+    char* priorityCode = str_append(ToCharArray(tm.tm_year + 1900), 
+        str_append(ToCharArray(tm.tm_mon), str_append(ToCharArray(tm.tm_mday), 
+            str_append(str_append(ToCharArray(tm.tm_hour), ToCharArray(tm.tm_min)), ToCharArray(tm.tm_sec)))));
+    long long tt = atoll(priorityCode); // 
+    printf("%lld\n", tt);
+   
+    
     
     // Assign read order priority to message if subbed to channel sent to.
     if(GetClientSubIndex(id) >= 0) {   
-        allChans[i_id].msgs[allChans[i_id].totalMsgs].readPriority = curMsgReadPriority;
-        curMsgReadPriority++;   
+        allChans[i_id].msgs[allChans[i_id].totalMsgs].timeSent = tt;  
     } 
 
     allChans[i_id].totalMsgs++; // Increase total messages sent.
-   // sem_post(&chanMutex[i_id]);
+    sem_post(&chanMutex[i_id]);
     return "";
 }
 
@@ -423,7 +435,7 @@ char* Channels()
         int c_index = GetClientSubIndex(client.channels[i].id); // Get index of channel in client subs.
         char* t_msg = "Channel: 111\tTotal Messages: 222\tRead: 333\tUnread 444\n"; 
         printf("4\n");
-        //CriticalChanAccess(i_id, 1); // Check if can read.
+        CriticalChanAccess(i_id, 1); // Check if can read.
         printf("5\n");
         t_msg = replace_str(t_msg, "111", allChans[i_id].id); 
         t_msg = replace_str(t_msg, "222", ToCharArray(allChans[ i_id].totalMsgs));
@@ -501,19 +513,21 @@ char* NextAll()
         return "Not subscribed to any channels.\n";
 
     int nextChanID = 99999;
-    long nextMsgRdPriority = 99999;
+    long long nextMsgSentTime = 9999999999999;
    
     for(int i = 0; i < client.curChanPos; i++) // Loop through subscriptions.
     {
-        CriticalChanAccess(atoi(allChans[atoi(client.channels[i].id)].id), 1);
         if(client.channels[i].curMsgReadPos < allChans[atoi(client.channels[i].id)].totalMsgs)
         {
+            printf("uuuuu\n");
             int readPos = client.channels[i].curMsgReadPos;
-            if(allChans[atoi(client.channels[i].id)].msgs[readPos].readPriority < nextMsgRdPriority) // Check if msg higher priority.
+            if(allChans[atoll(client.channels[i].id)].msgs[readPos].timeSent < nextMsgSentTime) // Check if msg higher priority.
             {
+                printf("here 1\n");
+                CriticalChanAccess(atoi(allChans[atoi(client.channels[i].id)].id), 1);
                 printf("HERE\n");
                 nextChanID = atoi(client.channels[i].id);
-                nextMsgRdPriority = allChans[atoi(client.channels[i].id)].msgs[readPos].readPriority;   
+                nextMsgSentTime = allChans[atoll(client.channels[i].id)].msgs[readPos].timeSent;   
             }           
         } 
     }
@@ -521,7 +535,6 @@ char* NextAll()
     if(nextChanID >= 99999) // No new messages, return nothing.
         return "";
     
-    curMsgReadPriority = nextMsgRdPriority + 1;
     client.channels[GetClientSubIndex(allChans[nextChanID].id)].curMsgReadPos++;
     return str_append(str_append(ToCharArray(nextChanID),":"), 
         allChans[nextChanID].msgs[client.channels[GetClientSubIndex(allChans[nextChanID].id)].curMsgReadPos-1].msg);
@@ -614,50 +627,40 @@ int main(int argc, char * argv[])
     clilen = sizeof(cli_addr);    
 
 
-   
-
-    allChans_key = 8234; // Name shared memory.
-    if ((shmid[1] = shmget(IPC_PRIVATE, SHM_C_SZ, IPC_CREAT | IPC_EXCL | 0666)) < 0) { // Create mem segment.
+    // Shared memory (Client ID).
+    if ((shmid[0] = shmget(IPC_PRIVATE, SHMSZ, IPC_CREAT | 0666)) < 0) { // Create mem segment.
         perror("shmget");
         exit(1);
     }
-    allChans = shmat(shmid[1], NULL, 0); // Attach segment to data space.
- 
-    //allChans = ); // Create all channels.   
-    for(int i = 0; i < 255; i++) {    
-        allChans[i].id = calloc(3, sizeof(char));              // Populate all channels with default values.
+    shm_cliForks = shmat(shmid[0], NULL, 0); // Attach segment to data space.
+
+    // Shared memory (Channels).
+    if ((shmid[1] = shmget(IPC_PRIVATE, sizeof(struct Channel) * 255, IPC_CREAT | IPC_EXCL | 0666)) < 0) { // Create mem segment.
+        perror("shmget");
+        StopServer();
+    }
+    allChans = shmat(shmid[1], NULL, 0); // Attach segment to data space.     
+    for(int i = 0; i < 255; i++) { // Populate channels with default values.
+        allChans[i].id = calloc(3, sizeof(char));
         strcpy(allChans[i].id, ToCharArray(i));
         allChans[i].curMsgReadPos = 0;
         allChans[i].totalMsgs = 0;
         allChans[i].curSubPos = 0;
     }   
 
-/* *
-    chanMutex_key = 6880; // Name shared memory.
-    if ((shmid[2] = shmget(chanMutex_key, SHMSZ, IPC_CREAT | 0666)) < 0) { // Create mem segment.
+    // Shared memory (Mutex id for each channel).
+    if ((shmid[2] = shmget(IPC_PRIVATE, sizeof(sem_t) * 255, IPC_CREAT | 0666)) < 0) { // Create mem segment.
         perror("shmget");
-        exit(1);
+        StopServer();
     }
     chanMutex = shmat(shmid[2], NULL, 0); // Attach segment to data space.
-    chanMutex = calloc(255, sizeof(sem_t));
     for(int i = 0; i < 255; i++) { // Init all mutex locks.
         sem_init(&chanMutex[i], 1, 1);
     }
-*/
-   
 
-
-    // Multi-processing.
-    ////////////////////////////////////////////////   
-    cliForks_key = 4008; // Name shared memory.
-    if ((shmid[0] = shmget(IPC_PRIVATE, SHMSZ, IPC_CREAT | 0666)) < 0) { // Create mem segment.
-        perror("shmget");
-        exit(1);
-    }
-    shm_cliForks = (int*) shmat(shmid[0], NULL, 0); // Attach segment to data space.
-
+    // Multiprocessing.
+    /////////////////////////////////////////////////
     pid_t pid;
-
     // Create client handler forks.
     for(int i=0;i<MAX_CLIENTS;i++) { 
         pid = fork();
