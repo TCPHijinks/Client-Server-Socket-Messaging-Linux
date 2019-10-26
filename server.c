@@ -676,11 +676,13 @@ int main(int argc, char * argv[])
         }            
     }
 
-    int id_index = *shm_cliForks;
-    *shm_cliForks += 1;
+    
     
     if(pid == 0)
     {  
+        int id_index = *shm_cliForks;
+        *shm_cliForks += 1;
+
         while(1){ // Keep reconnecting.
             newsockfd = accept(sockfd , (struct sockaddr *) &cli_addr , &clilen); // Accept client connection (waits until complete).
             if(newsockfd < 0) 
