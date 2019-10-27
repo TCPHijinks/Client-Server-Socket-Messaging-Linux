@@ -625,7 +625,7 @@ int main(int argc, char * argv[])
 
   
     if(bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) 
-        Error("Failed to bind socket address to memory!\n");
+        Error("Failed to bind socket address to memory!\n\nNOTE:: If Client(s) running, press Enter on their terminal Twice.\n\n");
     
     listen(sockfd , MAX_CLIENTS); // Listen on socket passively.
     clilen = sizeof(cli_addr);    
@@ -715,7 +715,6 @@ int main(int argc, char * argv[])
                 else if(strstr(bufferg , "BYE") != NULL)   
                 {
                     Bye(newsockfd);
-                    break;
                 }   
                 else if(strstr(bufferg , "NEXT") != NULL)  
                     if(strlen(bufferg) >= 6)  
@@ -733,9 +732,7 @@ int main(int argc, char * argv[])
                 if(n < 0) // Write fail, try reconnect.
                     break;
             }
-        }    
-        close(sockfd);   
-        close(newsockfd);
+        }  
     }
     ////////////////////////////////////////////////////////
     
@@ -754,6 +751,10 @@ int main(int argc, char * argv[])
 
     for(int i=0;i<MAX_CLIENTS;i++) // loop will run n times (n=5) 
         wait(NULL); 
+
+
+     close(sockfd);   
+     close(newsockfd);
 
     // Detach from mem when all stop.
     shmdt(shm_cliForks); // Detach shared mem segment.
