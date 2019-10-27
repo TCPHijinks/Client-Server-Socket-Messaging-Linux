@@ -657,8 +657,6 @@ int main(int argc, char * argv[])
             Error("ERROR, fork failed.");               
     }    
     if(pid == 0)
-    {  
-        printf("--\n");
         int id_index = *shm_cliForks;
         *shm_cliForks += 1;
 
