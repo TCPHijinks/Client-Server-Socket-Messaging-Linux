@@ -122,10 +122,12 @@ int main(int argc , char *argv[])
         {          
             bzero(buffer , BUFFER_SIZE); // Clear buffer.
             read(sockfd , buffer , BUFFER_SIZE);
-            
-            printf("%s",buffer);
-            if(streaming == 0)
-                break;
+            if(strstr(buffer, "Not subscribed to any channels.") != NULL)
+            {
+                if(strstr(buffer, "IGNORE") == NULL)
+                    printf("%s",buffer);                               
+                streaming = 0;
+            }
 
             char* msg = "​​";
             write(sockfd , msg , strlen(msg));
@@ -136,7 +138,8 @@ int main(int argc , char *argv[])
         bzero(buffer , BUFFER_SIZE); 
         n = read(sockfd , buffer , BUFFER_SIZE); 
         if(n < 0) break;
-        printf("%s",buffer);
+        if(strstr(buffer, "IGNORE") == NULL)
+            printf("%s",buffer);
        
     }    
     close(sockfd);

@@ -146,7 +146,7 @@ struct Channel
     int curSubPos;      // Point from where you can read future msgs.
     int curMsgReadPos;  // Cur point of reading.
     int totalMsgs;      // Total msgs in channel (readable and not).
-    struct Message msgs[256];
+    struct Message msgs[1000];
 };
 
 
@@ -300,7 +300,7 @@ char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified chan
 {
     char* id = GetIdFromBuffer(buffer, 5, 4);   
     if(ValidID(id) < 0) // Invalid id.
-        return replace_str("Invalid channel: xxx.\n","xxx",id);
+        return replace_str("Invalid channel: xxx\n","xxx",id);
 
     int i = GetClientSubIndex(id);
     if(i < 0) // Not subscribed to this chan id.
@@ -332,7 +332,7 @@ char* Sub(char buffer[BUFFER_SIZE])
 { 
     char* id = GetIdFromBuffer(buffer, 3, 4);
     if(ValidID(id) < 0) // Return if invalid id.
-        return replace_str("Invalid channel: xxx.\n","xxx",id);
+        return replace_str("Invalid channel: xxx\n","xxx",id);
 
     if(GetClientSubIndex(id) >= 0)
         return replace_str("Already subscribed to channel xxx.\n","xxx",id);
@@ -495,9 +495,11 @@ char* Next(char* buffer)
 */
 char* NextAll()
 {
-    if(client.curChanPos == 0) // If not return min length, no subs.
+     if(client.curChanPos == 0) // If not return min length, no subs.
+    {
+        streaming = 0;
         return "Not subscribed to any channels.\n";
-
+    }
     int nextChanID = 99999;
     long long nextMsgSentTime = 9999999999999;
    
@@ -536,6 +538,14 @@ char* NextAll()
 */
 void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
 {
+    if(client.curChanPos == 0) // If not return min length, no subs.
+    {
+       
+        streaming = 0;
+        WriteClient(newsockfd, "Not subscribed to any channels.\n");
+        return;
+    }
+
     streaming = 1;
     char* newBuffer = calloc(BUFFER_SIZE, sizeof(char));
     
@@ -544,6 +554,7 @@ void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
     
     while(streaming == 1) 
     {
+        printf(")))\n");
         char* msg = calloc(BUFFER_SIZE, sizeof(char));
 
         if(strlen(newBuffer) > 0) { // Livestream msgs for specified channel.
@@ -556,9 +567,12 @@ void LiveStream(int newsockfd, char buffer[BUFFER_SIZE])
             if(strlen(msg) > 0)            
                 WriteClient(newsockfd, msg); 
         }
+        if(streaming == 0)
+            break;
         if(strlen(msg) <= 0) { // Livestream nothing if no msg.
             WriteClient(newsockfd, "​");
         }
+            
 
         bzero(buffer , BUFFER_SIZE); 
         read(newsockfd , buffer , BUFFER_SIZE);
@@ -657,6 +671,7 @@ int main(int argc, char * argv[])
             Error("ERROR, fork failed.");               
     }    
     if(pid == 0)
+    {  
         int id_index = *shm_cliForks;
         *shm_cliForks += 1;
 
@@ -698,10 +713,14 @@ int main(int argc, char * argv[])
                         msg = Next(bufferg);
                     else
                         msg = NextAll();
-                else
-                    msg =  "";
-                if(strstr(bufferg, "LIVESTREAM") != NULL)  
+                else if(strstr(bufferg, "LIVESTREAM") != NULL)  
+                {
                     LiveStream(newsockfd, bufferg);
+                    msg = "IGNORE";
+                }
+                    
+                else
+                    msg =  "IGNORE";
 
                 int n = WriteClient(newsockfd, str_append("​", msg));   
                 if(n < 0) // Write fail, try reconnect.
