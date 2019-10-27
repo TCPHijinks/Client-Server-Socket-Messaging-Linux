@@ -70,7 +70,7 @@ int main(int argc , char *argv[])
         fprintf(stderr, "usage %s hostname port.\n", argv[0]); // Print to 'Standard Error' Stream output.
         exit(1);
     }
-        
+    
     portno = atoi(argv[2]); // Get port no from command line args.
     sockfd = socket(AF_INET, SOCK_STREAM, 0); // File descriptor has: IPv4, TCP, default to TCP.
     if(sockfd < 0) // Failure (-1).   
@@ -87,32 +87,34 @@ int main(int argc , char *argv[])
     serv_addr.sin_family = AF_INET;
     bcopy((char *) server->h_addr_list[0] , (char *) &serv_addr.sin_addr.s_addr, server->h_length); // Copy n bytes from hostnet to serv_addr.
     serv_addr.sin_port = htons(portno); // Set port to 'Host to network shot'.
+    // If fail connect, try connect to next port.
     if(connect(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0)
-        error("Connection Failed.");
+    {
+        portno += 1;
+        serv_addr.sin_port = htons(portno);
+        if(connect(sockfd , (struct sockaddr *) &serv_addr , sizeof(serv_addr)) < 0)
+            error("Connection Failed.");
+    }
+        
 
-    // Recieve and display server connection message.
- //   bzero(buffer , BUFFER_SIZE);            // Empty buffer.
-  //  n = read(sockfd , buffer , BUFFER_SIZE);// Read buffer from server.
- //   if(n < 0) error("Error on read.");      // Throw error if connection issue.
-  //  printf("%s",buffer);                    // Print server buffer to terminal.
-
-   
     while(servrun == 1)
     {
-        bzero(buffer , BUFFER_SIZE); // Empty.
-        n = read(sockfd , buffer , BUFFER_SIZE); // Read buffer from server.
-        if(n < 0) error("Error on read.");
+        // Wait to read buffer from server.
+        bzero(buffer , BUFFER_SIZE); 
+        n = read(sockfd , buffer , BUFFER_SIZE); 
+        if(n < 0) break;
         printf("%s",buffer);
        
+        // Wait to read from standard input.
         bzero(buffer , BUFFER_SIZE);
-        fgets(buffer , BUFFER_SIZE , stdin); // Get terminal input (wait point).
+        fgets(buffer , BUFFER_SIZE , stdin); 
+
         strcpy(buffer, replace_str(buffer, "[+Hide-] EXEC EXIT SERVER", "N/A")); // Prevent client closing server. 
         n = write(sockfd , buffer , strlen(buffer));
-        if(n < 0) error("Error on write.");        
-        if(strstr(buffer , "BYE") != NULL)
-            break;
-        if(strstr(buffer , "LIVESTREAM") != NULL)
-            streaming = 1;
+
+        if(n < 0) break;    
+        if(strstr(buffer , "BYE") != NULL) break;
+        if(strstr(buffer , "LIVESTREAM") != NULL) streaming = 1;
 
         while (streaming == 1)
         {          
@@ -125,13 +127,9 @@ int main(int argc , char *argv[])
 
             char* msg = "​​";
             write(sockfd , msg , strlen(msg));
-
             sleep(.6);
         }
-
-       
-    }
-    
+    }    
     close(sockfd);
     return 0;
 }
