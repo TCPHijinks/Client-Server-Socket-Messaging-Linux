@@ -24,7 +24,7 @@
 int sockfd , newsockfd; // Socket file discriptors.
 int portno, n;
 
-const int MAX_CLIENTS = 9;
+const int MAX_CLIENTS = 6; // Allow 32 Clients.
 
 
 
@@ -658,6 +658,7 @@ int main(int argc, char * argv[])
     }    
     if(pid == 0)
     {  
+        printf("--\n");
         int id_index = *shm_cliForks;
         *shm_cliForks += 1;
 
