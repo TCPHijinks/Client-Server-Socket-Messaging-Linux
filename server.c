@@ -24,7 +24,7 @@
 int sockfd , newsockfd; // Socket file discriptors.
 int portno, n;
 
-const int MAX_CLIENTS = 4;
+const int MAX_CLIENTS = 9;
 
 
 
@@ -276,7 +276,7 @@ int GetClientSubIndex(char* id) // Return index of given channel.
 */
 void CriticalChanAccess(int chanID, int reading)
 {
-    if(reading) // Read if not writing & allow immediate access to others.    ///////////////////////////////////////////////////////////
+    if(reading) // Read if not writing & allow immediate access to others. 
     {
         sem_wait(&chanMutex[chanID]);
         sem_post(&chanMutex[chanID]);
@@ -655,10 +655,7 @@ int main(int argc, char * argv[])
         pid = fork();
         if(pid < 0)
             Error("ERROR, fork failed.");               
-    }
-
-    
-    
+    }    
     if(pid == 0)
     {  
         int id_index = *shm_cliForks;
@@ -706,8 +703,6 @@ int main(int argc, char * argv[])
                     msg =  "";
                 if(strstr(bufferg, "LIVESTREAM") != NULL)  
                     LiveStream(newsockfd, bufferg);
-
-            
 
                 int n = WriteClient(newsockfd, str_append("​", msg));   
                 if(n < 0) // Write fail, try reconnect.

@@ -24,6 +24,8 @@ int streaming = 0;
 #include <netdb.h>      // Defines hostent struct. Contains host info, including hostname and ip version for address (e.g. ipv4).
 #include <signal.h>
 
+ char buffer[BUFFER_SIZE]; // Store messages in heref ro data stream.
+
 void error(const char *msg)
 {
     perror(msg); // Output error number and message.
@@ -36,8 +38,11 @@ void sigintHandler(int sig_num)
     streaming = 0;
     signal(SIGINT, sigintHandler);    
     write(sockfd , "[+Hide-] EXEC EXIT SERVER" , strlen("[+Hide-] EXEC EXIT SERVER"));
-    fflush(stdout); 
-    fflush(stdin); 
+     // Wait to read buffer from server.
+    bzero(buffer , BUFFER_SIZE); 
+    int n = read(sockfd , buffer , BUFFER_SIZE); 
+    if(n < 0) error("Can't read. Something broke!\n");
+    printf("%s",buffer);
 } 
  
 
@@ -65,7 +70,7 @@ int main(int argc , char *argv[])
     struct sockaddr_in serv_addr; // Socket address.
     struct hostent *server;
     
-    char buffer[BUFFER_SIZE]; // Store messages in heref ro data stream.
+   
     if(argc < 3){ // Error if not given all args (hostname and port no).
         fprintf(stderr, "usage %s hostname port.\n", argv[0]); // Print to 'Standard Error' Stream output.
         exit(1);
@@ -96,19 +101,16 @@ int main(int argc , char *argv[])
             error("Connection Failed.");
     }
         
-
-    while(servrun == 1)
-    {
         // Wait to read buffer from server.
         bzero(buffer , BUFFER_SIZE); 
         n = read(sockfd , buffer , BUFFER_SIZE); 
-        if(n < 0) break;
+        if(n < 0) error("Can't read. Something broke!\n");
         printf("%s",buffer);
-       
-        // Wait to read from standard input.
+
+    while(servrun == 1)
+    {    
         bzero(buffer , BUFFER_SIZE);
         fgets(buffer , BUFFER_SIZE , stdin); 
-
         strcpy(buffer, replace_str(buffer, "[+Hide-] EXEC EXIT SERVER", "N/A")); // Prevent client closing server. 
         n = write(sockfd , buffer , strlen(buffer));
 
@@ -129,6 +131,13 @@ int main(int argc , char *argv[])
             write(sockfd , msg , strlen(msg));
             sleep(.6);
         }
+
+        // Wait to read buffer from server.
+        bzero(buffer , BUFFER_SIZE); 
+        n = read(sockfd , buffer , BUFFER_SIZE); 
+        if(n < 0) break;
+        printf("%s",buffer);
+       
     }    
     close(sockfd);
     return 0;
