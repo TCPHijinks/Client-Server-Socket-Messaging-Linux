@@ -331,6 +331,8 @@ char* Unsub(char buffer[BUFFER_SIZE]) // Unsubscribes client from specified chan
 char* Sub(char buffer[BUFFER_SIZE])
 { 
     char* id = GetIdFromBuffer(buffer, 3, 4);
+
+   
     if(ValidID(id) < 0) // Return if invalid id.
         return replace_str("Invalid channel: xxx\n","xxx",id);
 
@@ -716,7 +718,7 @@ int main(int argc, char * argv[])
                 else if(strstr(bufferg, "LIVESTREAM") != NULL)  
                 {
                     LiveStream(newsockfd, bufferg);
-                    msg = "IGNORE";
+                    msg = "​";
                 }
                     
                 else
